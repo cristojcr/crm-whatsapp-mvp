@@ -1,0 +1,1 @@
+"# Configura‡oes Compartilhadas" 
