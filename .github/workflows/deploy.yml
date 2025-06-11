@@ -1,0 +1,111 @@
+name: 🚀 Deploy - Production & Staging
+
+on:
+  push:
+    branches: [ main, staging ]
+
+jobs:
+  deploy-staging:
+    name: 🟡 Deploy to Staging
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 📦 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: 🏗️ Build Backend
+      run: |
+        cd apps/api
+        npm ci
+        npm run build
+        
+    - name: 🏗️ Build Frontend
+      run: |
+        cd apps/web
+        npm ci
+        npm run build
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+        
+    - name: 🚀 Deploy to Railway (Staging)
+      uses: bltavares/actions-railway@v1
+      with:
+        railway_token: ${{ secrets.RAILWAY_TOKEN_STAGING }}
+        
+    - name: 🚀 Deploy to Vercel (Staging)
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID_STAGING }}
+        working-directory: apps/web
+
+  deploy-production:
+    name: 🟢 Deploy to Production
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    needs: [test-backend, test-frontend, security-scan]
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 📦 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: 🏗️ Build Backend
+      run: |
+        cd apps/api
+        npm ci
+        npm run build
+        
+    - name: 🏗️ Build Frontend
+      run: |
+        cd apps/web
+        npm ci
+        npm run build
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
+        
+    - name: 🚀 Deploy to Railway (Production)
+      uses: bltavares/actions-railway@v1
+      with:
+        railway_token: ${{ secrets.RAILWAY_TOKEN_PROD }}
+        
+    - name: 🚀 Deploy to Vercel (Production)
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID_PROD }}
+        working-directory: apps/web
+        vercel-args: '--prod'
+
+  notify-deploy:
+    name: 📢 Notify Deploy Status
+    runs-on: ubuntu-latest
+    needs: [deploy-production, deploy-staging]
+    if: always()
+    
+    steps:
+    - name: 📧 Send notification
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: '🚀 Deploy completed for ${{ github.ref_name }}'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
