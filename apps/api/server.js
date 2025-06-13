@@ -7,6 +7,10 @@ require('dotenv').config({ path: '.env' });
 // Importar configurações
 const { createClient } = require('./src/config/supabase');
 const { prisma, connectDatabase, testConnection } = require('./src/config/prisma');
+// Importar rotas
+const authRoutes = require('./src/routes/auth');
+const userRoutes = require('./src/routes/users');
+const { optionalAuth, authenticateToken } = require('./src/middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -30,6 +34,14 @@ app.use((req, res, next) => {
   req.prisma = prisma;
   next();
 });
+// Middleware opcional de auth para todas as rotas
+app.use(optionalAuth);
+
+// Rotas de autenticação
+app.use('/api/auth', authRoutes);
+
+// Rotas de usuários (protegidas)
+app.use('/api/users', userRoutes);
 
 // Rotas principais
 app.get('/', (req, res) => {
@@ -77,9 +89,29 @@ app.get('/api', (req, res) => {
     name: 'CRM WhatsApp API',
     version: '1.0.0',
     description: 'API REST para CRM WhatsApp Inteligente',
+    authentication: {
+      type: 'JWT Bearer Token',
+      login: '/api/auth/login',
+      register: '/api/auth/register',
+      refresh: '/api/auth/refresh'
+    },
     endpoints: {
-      auth: '/api/auth',
-      users: '/api/users',
+      // Autenticação
+      'auth.login': 'POST /api/auth/login',
+      'auth.register': 'POST /api/auth/register',
+      'auth.logout': 'POST /api/auth/logout',
+      'auth.me': 'GET /api/auth/me',
+      'auth.refresh': 'POST /api/auth/refresh',
+      'auth.forgot': 'POST /api/auth/forgot-password',
+      
+      // Usuários
+      'users.list': 'GET /api/users',
+      'users.get': 'GET /api/users/:id',
+      'users.update': 'PUT /api/users/:id',
+      'users.delete': 'DELETE /api/users/:id (admin)',
+      'users.stats': 'GET /api/users/:id/stats',
+      
+      // Outros endpoints
       contacts: '/api/contacts',
       conversations: '/api/conversations',
       messages: '/api/messages',
@@ -92,7 +124,11 @@ app.get('/api', (req, res) => {
       provider: 'PostgreSQL',
       host: 'Supabase'
     },
-    status: 'operational'
+    status: 'operational',
+    authenticated_user: req.user ? {
+      id: req.user.id,
+      email: req.user.email
+    } : null
   });
 });
 
@@ -131,6 +167,29 @@ app.use((error, req, res, next) => {
     message: 'Erro interno do servidor',
     timestamp: new Date().toISOString()
   });
+});
+
+// Rota de teste protegida
+app.get('/api/test-auth', authenticateToken, async (req, res) => {
+  try {
+    res.json({
+      message: '🔒 Rota protegida funcionando!',
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        authenticated_at: new Date().toISOString()
+      },
+      token_info: {
+        valid: true,
+        provider: 'Supabase Auth'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro no teste de autenticação',
+      message: error.message
+    });
+  }
 });
 
 // Rota 404
