@@ -1,81 +1,37 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const compression = require('compression');
-const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-require('dotenv').config();
+require('dotenv').config({ path: '.env' });
+
+// Importar configurações
+const { createClient } = require('./src/config/supabase');
+const { prisma, connectDatabase, testConnection } = require('./src/config/prisma');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// =============================================================================
-// MIDDLEWARE DE SEGURANÇA E PERFORMANCE
-// =============================================================================
-
-// Helmet para headers de segurança
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-}));
-
-// CORS configurado
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.vercel.app']
-    : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
-
-// Compression para responses
-app.use(compression());
-
-// Logging
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+// Middlewares de segurança
+app.use(helmet());
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // requests por IP
-  message: {
-    error: 'Muitas requisições deste IP, tente novamente em 15 minutos.',
-    code: 'RATE_LIMIT_EXCEEDED'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
+  max: 1000, // limite de requests por IP
+  message: 'Muitas tentativas, tente novamente em 15 minutos.'
+});
+app.use(limiter);
+
+// Middleware para adicionar Prisma nas requests
+app.use((req, res, next) => {
+  req.prisma = prisma;
+  next();
 });
 
-app.use('/api/', limiter);
-
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// =============================================================================
-// HEALTH CHECK E ROTAS BÁSICAS
-// =============================================================================
-
-// Health check
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    version: process.env.npm_package_version || '1.0.0',
-    uptime: process.uptime(),
-    memory: process.memoryUsage()
-  });
-});
-
-// Root endpoint
+// Rotas principais
 app.get('/', (req, res) => {
   res.json({
     message: '🚀 CRM WhatsApp API - Online!',
@@ -85,7 +41,42 @@ app.get('/', (req, res) => {
   });
 });
 
-// API Info
+app.get('/health', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    // Testar conexão Prisma
+    const prismaOk = await testConnection();
+    
+    // Testar Supabase
+    const supabase = createClient();
+    const { data, error } = await supabase.from('users').select('count').limit(1);
+    const supabaseOk = !error;
+    
+    const responseTime = Date.now() - startTime;
+    
+    res.json({
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      version: '1.0.0',
+      uptime: process.uptime(),
+      responseTime: `${responseTime}ms`,
+      connections: {
+        prisma: prismaOk ? 'connected' : 'disconnected',
+        supabase: supabaseOk ? 'connected' : 'disconnected'
+      },
+      memory: process.memoryUsage()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 app.get('/api', (req, res) => {
   res.json({
     name: 'CRM WhatsApp API',
@@ -93,99 +84,108 @@ app.get('/api', (req, res) => {
     description: 'API REST para CRM WhatsApp Inteligente',
     endpoints: {
       auth: '/api/auth',
-      users: '/api/users', 
+      users: '/api/users',
+      contacts: '/api/contacts',
       conversations: '/api/conversations',
       messages: '/api/messages',
       calendar: '/api/calendar',
-      billing: '/api/billing',
+      ai: '/api/ai',
       webhooks: '/api/webhooks'
+    },
+    database: {
+      orm: 'Prisma',
+      provider: 'PostgreSQL',
+      host: 'Supabase'
     },
     status: 'operational'
   });
 });
 
-// =============================================================================
-// ROTAS DA API (placeholder - implementaremos depois)
-// =============================================================================
-
-// Rota de teste para Supabase
-app.get('/api/test-db', async (req, res) => {
+// Rota de teste do Prisma
+app.get('/api/test-prisma', async (req, res) => {
   try {
-    // Teste de conexão com Supabase será implementado
+    // Contar registros em cada tabela
+    const stats = {
+      users: await prisma.user.count(),
+      contacts: await prisma.contact.count(),
+      conversations: await prisma.conversation.count(),
+      messages: await prisma.message.count(),
+      calendar: await prisma.calendar.count(),
+      aiInteractions: await prisma.aIInteraction.count()
+    };
+    
     res.json({
-      message: 'Database connection test',
-      status: 'pending_implementation'
+      message: '✅ Prisma funcionando!',
+      database: 'PostgreSQL via Supabase',
+      tables: stats,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     res.status(500).json({
-      error: 'Database connection failed',
-      message: error.message
+      message: '❌ Erro no Prisma',
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// =============================================================================
-// ERROR HANDLING
-// =============================================================================
+// Middleware de erro global
+app.use((error, req, res, next) => {
+  console.error('❌ Erro:', error);
+  res.status(500).json({
+    message: 'Erro interno do servidor',
+    timestamp: new Date().toISOString()
+  });
+});
 
-// 404 Handler
+// Rota 404
 app.use('*', (req, res) => {
   res.status(404).json({
-    error: 'Endpoint não encontrado',
-    message: `Rota ${req.method} ${req.originalUrl} não existe`,
-    availableEndpoints: [
-      'GET /',
-      'GET /health',
-      'GET /api',
-      'GET /api/test-db'
-    ]
+    message: 'Rota não encontrada',
+    path: req.originalUrl,
+    timestamp: new Date().toISOString()
   });
 });
 
-// Error Handler Global
-app.use((error, req, res, next) => {
-  console.error('Error:', error);
-  
-  res.status(error.status || 500).json({
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Erro interno do servidor' 
-      : error.message,
-    code: error.code || 'INTERNAL_SERVER_ERROR',
-    timestamp: new Date().toISOString(),
-    path: req.path
-  });
-});
-
-// =============================================================================
-// START SERVER
-// =============================================================================
-
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`
-🚀 CRM WhatsApp API está rodando!
-📍 Ambiente: ${process.env.NODE_ENV || 'development'}
-🌐 URL: http://localhost:${PORT}
-📊 Health: http://localhost:${PORT}/health
-📚 API: http://localhost:${PORT}/api
-⏰ Iniciado em: ${new Date().toISOString()}
-  `);
-});
+// Inicializar servidor
+async function startServer() {
+  try {
+    // Tentar conectar Prisma (não obrigatório)
+    const prismaConnected = await connectDatabase();
+    if (!prismaConnected) {
+      console.log('⚠️ Prisma não conectou, mas servidor vai iniciar mesmo assim');
+    }
+    
+    // Iniciar servidor
+    app.listen(PORT, () => {
+      console.log('🚀 CRM WhatsApp API está rodando!');
+      console.log(`📍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🌐 URL: http://localhost:${PORT}`);
+      console.log(`🗄️ Database: PostgreSQL via Supabase`);
+      console.log(`🔧 ORM: Prisma`);
+      console.log(`📊 Health: http://localhost:${PORT}/health`);
+      console.log(`🧪 Teste Prisma: http://localhost:${PORT}/api/test-prisma`);
+      console.log(`⚡ API: http://localhost:${PORT}/api`);
+      console.log(`📅 Iniciado em: ${new Date().toISOString()}`);
+    });
+  } catch (error) {
+    console.error('❌ Falha ao iniciar servidor:', error);
+    process.exit(1);
+  }
+}
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM recebido, finalizando servidor...');
-  server.close(() => {
-    console.log('✅ Servidor finalizado gracefully');
-    process.exit(0);
-  });
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Desligando servidor...');
+  await prisma.$disconnect();
+  process.exit(0);
 });
 
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT recebido, finalizando servidor...');
-  server.close(() => {
-    console.log('✅ Servidor finalizado gracefully');
-    process.exit(0);
-  });
+process.on('SIGTERM', async () => {
+  console.log('🛑 SIGTERM recebido, desligando...');
+  await prisma.$disconnect();
+  process.exit(0);
 });
 
-module.exports = app;
+// Iniciar
+startServer();

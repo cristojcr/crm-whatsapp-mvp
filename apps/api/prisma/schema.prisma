@@ -1,0 +1,110 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  phone     String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relacionamentos
+  conversations Conversation[]
+  
+  @@map("users")
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  name        String?
+  phone       String   @unique
+  email       String?
+  tags        String[]
+  notes       String?
+  isBlocked   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relacionamentos
+  conversations Conversation[]
+  
+  @@map("contacts")
+}
+
+model Conversation {
+  id            String   @id @default(cuid())
+  contactId     String
+  userId        String?
+  lastMessageAt DateTime @default(now())
+  isActive      Boolean  @default(true)
+  aiEnabled     Boolean  @default(true)
+  status        String   @default("open") // open, closed, archived
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relacionamentos
+  contact  Contact   @relation(fields: [contactId], references: [id])
+  user     User?     @relation(fields: [userId], references: [id])
+  messages Message[]
+  
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  content        String
+  messageType    String   // text, image, audio, document
+  direction      String   // incoming, outgoing
+  fromAI         Boolean  @default(false)
+  metadata       Json?    // WhatsApp metadata, media URLs, etc.
+  timestamp      DateTime @default(now())
+  createdAt      DateTime @default(now())
+  
+  // Relacionamentos
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  
+  @@map("messages")
+}
+
+model Calendar {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  contactId   String?
+  userId      String?
+  status      String    @default("scheduled") // scheduled, confirmed, cancelled
+  googleEventId String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@map("calendar_events")
+}
+
+model AIInteraction {
+  id             String   @id @default(cuid())
+  conversationId String?
+  prompt         String
+  response       String
+  model          String   // gpt-4, claude, etc.
+  tokens         Int?
+  cost           Float?
+  intent         String?  // agendamento, vendas, suporte, etc.
+  confidence     Float?
+  createdAt      DateTime @default(now())
+  
+  @@map("ai_interactions")
+}
