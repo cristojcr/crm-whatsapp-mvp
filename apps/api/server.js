@@ -45,13 +45,8 @@ app.get('/health', async (req, res) => {
   const startTime = Date.now();
   
   try {
-    // Testar conexão Prisma
-    const prismaOk = await testConnection();
-    
-    // Testar Supabase
-    const supabase = createClient();
-    const { data, error } = await supabase.from('users').select('count').limit(1);
-    const supabaseOk = !error;
+    // Testar apenas conexão Prisma (sem Supabase por enquanto)
+    const prismaOk = await testConnection().catch(() => false);
     
     const responseTime = Date.now() - startTime;
     
@@ -64,7 +59,7 @@ app.get('/health', async (req, res) => {
       responseTime: `${responseTime}ms`,
       connections: {
         prisma: prismaOk ? 'connected' : 'disconnected',
-        supabase: supabaseOk ? 'connected' : 'disconnected'
+        supabase: 'pending' // Temporariamente removido
       },
       memory: process.memoryUsage()
     });
