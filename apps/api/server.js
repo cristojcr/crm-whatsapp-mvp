@@ -15,6 +15,9 @@ const { optionalAuth, authenticateToken } = require('./src/middleware/auth');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Configurar trust proxy para Railway
+app.set('trust proxy', true);
+
 // Middlewares de segurança
 app.use(helmet());
 app.use(cors());
