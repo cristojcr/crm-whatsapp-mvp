@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { createClient } = require('../config/supabase');
+const { supabase } = require('../config/supabase');
 
 // Middleware para verificar JWT token
 const authenticateToken = async (req, res, next) => {
@@ -15,7 +15,7 @@ const authenticateToken = async (req, res, next) => {
     }
 
     // Verificar token com Supabase
-    const supabase = createClient();
+    
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
@@ -76,7 +76,7 @@ const optionalAuth = async (req, res, next) => {
     const token = authHeader && authHeader.split(' ')[1];
 
     if (token) {
-      const supabase = createClient();
+      
       const { data: { user }, error } = await supabase.auth.getUser(token);
       
       if (!error && user) {

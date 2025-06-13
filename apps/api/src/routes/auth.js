@@ -1,6 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { createClient } = require('../config/supabase');
+const { supabase } = require('../config/supabase');
 const { authenticateToken } = require('../middleware/auth');
 const { prisma } = require('../config/prisma');
 
@@ -39,7 +39,7 @@ router.post('/register', authLimiter, async (req, res) => {
     }
 
     // Criar usuário no Supabase Auth
-    const supabase = createClient();
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -107,7 +107,7 @@ router.post('/login', authLimiter, async (req, res) => {
     }
 
     // Login no Supabase
-    const supabase = createClient();
+    
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -161,7 +161,7 @@ router.post('/login', authLimiter, async (req, res) => {
 // POST /api/auth/logout - Logout de usuário
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
-    const supabase = createClient();
+    
     const { error } = await supabase.auth.signOut();
 
     if (error) {
@@ -242,7 +242,7 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    const supabase = createClient();
+    
     const { data, error } = await supabase.auth.refreshSession({
       refresh_token
     });
@@ -280,7 +280,7 @@ router.post('/forgot-password', authLimiter, async (req, res) => {
       });
     }
 
-    const supabase = createClient();
+    
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: 'http://localhost:3000/auth/reset-password'
     });
