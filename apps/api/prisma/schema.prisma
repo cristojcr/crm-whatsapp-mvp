@@ -16,10 +16,15 @@ model User {
   email     String   @unique
   name      String?
   phone     String?  @unique
+  role      UserRole @default(AGENT)
+  companyId String?
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
   // Relacionamentos
+  company       Company?      @relation(fields: [companyId], references: [id])
+  profile       UserProfile?
   conversations Conversation[]
   
   @@map("users")
@@ -107,4 +112,90 @@ model AIInteraction {
   createdAt      DateTime @default(now())
   
   @@map("ai_interactions")
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  industry    String?
+  size        CompanySize?
+  website     String?
+  phone       String?
+  email       String?
+  address     String?
+  city        String?
+  state       String?
+  country     String   @default("Brasil")
+  zipCode     String?
+  logoUrl     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relacionamentos
+  users       User[]
+  settings    CompanySettings?
+  
+  @@map("companies")
+}
+
+model CompanySettings {
+  id                String   @id @default(cuid())
+  companyId         String   @unique
+  businessHours     Json?    // Horários de funcionamento
+  timeZone          String   @default("America/Sao_Paulo")
+  language          String   @default("pt-BR")
+  currency          String   @default("BRL")
+  autoReply         Boolean  @default(true)
+  autoReplyMessage  String?
+  aiEnabled         Boolean  @default(true)
+  webhookUrl        String?
+  integrations      Json?    // Configurações de integrações
+  notifications     Json?    // Configurações de notificações
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relacionamentos
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  @@map("company_settings")
+}
+
+model UserProfile {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  firstName   String?
+  lastName    String?
+  avatar      String?
+  bio         String?
+  department  String?
+  position    String?
+  phoneWork   String?
+  birthday    DateTime?
+  preferences Json?     // Preferências do usuário
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relacionamentos
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_profiles")
+}
+
+enum CompanySize {
+  INDIVIDUAL
+  SMALL       // 1-10 funcionários
+  MEDIUM      // 11-50 funcionários
+  LARGE       // 51-200 funcionários
+  ENTERPRISE  // 200+ funcionários
+}
+
+enum UserRole {
+  OWNER       // Dono da empresa
+  ADMIN       // Administrador
+  MANAGER     // Gerente
+  AGENT       // Atendente
+  VIEWER      // Apenas visualização
 }

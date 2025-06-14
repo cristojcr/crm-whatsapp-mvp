@@ -2,7 +2,6 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { supabase } = require('../config/supabase');
 const { authenticateToken } = require('../middleware/auth');
-const { prisma } = require('../config/prisma');
 
 const router = express.Router();
 
@@ -39,7 +38,6 @@ router.post('/register', authLimiter, async (req, res) => {
     }
 
     // Criar usuário no Supabase Auth
-    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -58,19 +56,28 @@ router.post('/register', authLimiter, async (req, res) => {
       });
     }
 
-    // Criar registro no Prisma (se conectado)
+    // Criar registro na nossa tabela users (Supabase Client)
     try {
-      await prisma.user.create({
-        data: {
+      const { data: newUser, error: userError } = await supabase
+        .from('users')
+        .insert({
           id: data.user.id,
           email: data.user.email,
           name: name || null,
-          phone: phone || null
-        }
-      });
-    } catch (prismaError) {
-      console.warn('Erro ao criar usuário no Prisma:', prismaError);
-      // Não falha se Prisma der erro
+          phone: phone || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (userError) {
+        console.error('❌ Erro ao criar usuário na tabela users:', userError);
+      } else {
+        console.log('✅ Usuário criado na tabela users:', newUser.id);
+      }
+    } catch (supabaseError) {
+      console.warn('Erro ao criar usuário no Supabase:', supabaseError);
     }
 
     res.status(201).json({
@@ -107,7 +114,6 @@ router.post('/login', authLimiter, async (req, res) => {
     }
 
     // Login no Supabase
-    
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -120,7 +126,7 @@ router.post('/login', authLimiter, async (req, res) => {
       });
     }
 
-    // Buscar dados completos do usuário (se Prisma conectado)
+    // Buscar dados completos do usuário
     let userData = {
       id: data.user.id,
       email: data.user.email,
@@ -129,17 +135,20 @@ router.post('/login', authLimiter, async (req, res) => {
     };
 
     try {
-      const prismaUser = await prisma.user.findUnique({
-        where: { id: data.user.id }
-      });
-      if (prismaUser) {
+      const { data: supabaseUser, error: supabaseError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (!supabaseError && supabaseUser) {
         userData = {
           ...userData,
-          ...prismaUser
+          ...supabaseUser
         };
       }
-    } catch (prismaError) {
-      console.warn('Erro ao buscar usuário no Prisma:', prismaError);
+    } catch (supabaseQueryError) {
+      console.warn('Erro ao buscar usuário no Supabase:', supabaseQueryError);
     }
 
     res.json({
@@ -161,7 +170,6 @@ router.post('/login', authLimiter, async (req, res) => {
 // POST /api/auth/logout - Logout de usuário
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
-    
     const { error } = await supabase.auth.signOut();
 
     if (error) {
@@ -193,29 +201,22 @@ router.get('/me', authenticateToken, async (req, res) => {
       created_at: req.user.created_at
     };
 
-    // Buscar dados completos no Prisma (se conectado)
+    // Buscar dados completos no Supabase
     try {
-      const prismaUser = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        include: {
-          conversations: {
-            take: 5,
-            orderBy: { lastMessageAt: 'desc' }
-          }
-        }
-      });
+      const { data: supabaseUser, error: supabaseError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', req.user.id)
+        .single();
 
-      if (prismaUser) {
+      if (!supabaseError && supabaseUser) {
         userData = {
           ...userData,
-          ...prismaUser,
-          stats: {
-            totalConversations: prismaUser.conversations.length
-          }
+          ...supabaseUser
         };
       }
-    } catch (prismaError) {
-      console.warn('Erro ao buscar dados no Prisma:', prismaError);
+    } catch (supabaseQueryError) {
+      console.warn('Erro ao buscar dados no Supabase:', supabaseQueryError);
     }
 
     res.json({
@@ -242,7 +243,6 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    
     const { data, error } = await supabase.auth.refreshSession({
       refresh_token
     });
@@ -280,7 +280,6 @@ router.post('/forgot-password', authLimiter, async (req, res) => {
       });
     }
 
-    
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: 'http://localhost:3000/auth/reset-password'
     });

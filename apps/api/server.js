@@ -1,16 +1,40 @@
+// Debug e carregamento de variáveis PRIMEIRO
+console.log('📂 Carregando variáveis de ambiente...');
+
+// Carregar .env.local da pasta atual
+require('dotenv').config({ 
+  path: require('path').join(__dirname, '.env.local')
+});
+
+// Debug das variáveis CRÍTICAS
+console.log('🔍 DEBUG VARIÁVEIS:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('URL Supabase:', process.env.NEXT_PUBLIC_SUPABASE_URL || 'MISSING');
+console.log('ANON Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'OK' : 'MISSING');
+console.log('SERVICE Key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'OK' : 'MISSING');
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'OK' : 'MISSING');
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-require('dotenv').config({ path: '.env' });
 
-// Importar configurações
-const { createClient } = require('./src/config/supabase');
-const { prisma, connectDatabase, testConnection } = require('./src/config/prisma');
+// Importar Supabase Client (agora que as variáveis estão OK)
+const supabase = require('./src/config/supabase');
+// const { prisma, connectDatabase, testConnection } = require('./src/config/prisma');
+
+// Importar rotas (comentar se der erro)
+// const authRoutes = require('./src/routes/auth');
+// const userRoutes = require('./src/routes/users');
+// const { optionalAuth, authenticateToken } = require('./src/middleware/auth');
 // Importar rotas
 const authRoutes = require('./src/routes/auth');
 const userRoutes = require('./src/routes/users');
+const contactsRoutes = require('./src/routes/contacts');
 const { optionalAuth, authenticateToken } = require('./src/middleware/auth');
+const companiesRoutes = require('./src/routes/companies');
+const companySettingsRoutes = require('./src/routes/company-settings');
+const userProfileRoutes = require('./src/routes/user-profile');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -28,15 +52,16 @@ app.use(express.urlencoded({ extended: true }));
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 1000, // limite de requests por IP
-  message: 'Muitas tentativas, tente novamente em 15 minutos.'
+  message: 'Muitas tentativas, tente novamente em 15 minutos.',
+  trustProxy: false  // ← ADICIONAR ESTA LINHA
 });
 app.use(limiter);
 
 // Middleware para adicionar Prisma nas requests
-app.use((req, res, next) => {
-  req.prisma = prisma;
-  next();
-});
+// app.use((req, res, next) => {
+//   req.prisma = prisma;
+//   next();
+// });
 // Middleware opcional de auth para todas as rotas
 app.use(optionalAuth);
 
@@ -45,6 +70,12 @@ app.use('/api/auth', authRoutes);
 
 // Rotas de usuários (protegidas)
 app.use('/api/users', userRoutes);
+
+// Rotas contacts
+app.use('/api/contacts', contactsRoutes);
+app.use('/api/companies', companiesRoutes);
+app.use('/api/company-settings', companySettingsRoutes);
+app.use('/api/user-profile', userProfileRoutes);
 
 // Rotas principais
 app.get('/', (req, res) => {
@@ -56,12 +87,23 @@ app.get('/', (req, res) => {
   });
 });
 
+
+
 app.get('/health', async (req, res) => {
   const startTime = Date.now();
   
   try {
-    // Testar apenas conexão Prisma (sem Supabase por enquanto)
-    const prismaOk = await testConnection().catch(() => false);
+    // Testar conexão Supabase
+    let supabaseStatus = 'disconnected';
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('count', { count: 'exact', head: true });
+      supabaseStatus = error ? 'error' : 'connected';
+    } catch (err) {
+      console.error('Erro ao testar Supabase:', err.message);
+      supabaseStatus = 'error';
+    }
     
     const responseTime = Date.now() - startTime;
     
@@ -73,12 +115,13 @@ app.get('/health', async (req, res) => {
       uptime: process.uptime(),
       responseTime: `${responseTime}ms`,
       connections: {
-        prisma: prismaOk ? 'connected' : 'disconnected',
-        supabase: 'pending' // Temporariamente removido
+        prisma: 'disabled',
+        supabase: supabaseStatus
       },
       memory: process.memoryUsage()
     });
   } catch (error) {
+    console.error('❌ Erro no health check:', error);
     res.status(500).json({
       status: 'ERROR',
       message: error.message,
@@ -113,6 +156,24 @@ app.get('/api', (req, res) => {
       'users.update': 'PUT /api/users/:id',
       'users.delete': 'DELETE /api/users/:id (admin)',
       'users.stats': 'GET /api/users/:id/stats',
+
+      // Adicionar após os endpoints existentes
+      'companies.list': 'GET /api/companies',
+      'companies.create': 'POST /api/companies',
+      'companies.get': 'GET /api/companies/:id',
+      'companies.update': 'PUT /api/companies/:id',
+      'companies.delete': 'DELETE /api/companies/:id',
+
+      // Configurações de empresa
+      'company-settings.get': 'GET /api/company-settings/:companyId',
+      'company-settings.update': 'PUT /api/company-settings/:companyId',
+
+      // Perfil de usuário
+      'user-profile.me': 'GET /api/user-profile/me',
+      'user-profile.update': 'PUT /api/user-profile/me',
+      'user-profile.get': 'GET /api/user-profile/:id',
+      'user-profile.role': 'PUT /api/user-profile/:id/role',
+      'user-profile.company': 'PUT /api/user-profile/:id/company',
       
       // Outros endpoints
       contacts: '/api/contacts',
@@ -204,14 +265,18 @@ app.use('*', (req, res) => {
   });
 });
 
+
+
+
+
 // Inicializar servidor
 async function startServer() {
   try {
-    // Tentar conectar Prisma (não obrigatório)
-    const prismaConnected = await connectDatabase();
-    if (!prismaConnected) {
-      console.log('⚠️ Prisma não conectou, mas servidor vai iniciar mesmo assim');
-    }
+    console.log('🚀 Iniciando servidor...');
+    
+    // Por enquanto, vamos pular a conexão Prisma
+    // const prismaConnected = await connectDatabase();
+    console.log('⚠️ Prisma temporariamente desabilitado');
     
     // Iniciar servidor
     app.listen(PORT, () => {
@@ -219,9 +284,8 @@ async function startServer() {
       console.log(`📍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 URL: http://localhost:${PORT}`);
       console.log(`🗄️ Database: PostgreSQL via Supabase`);
-      console.log(`🔧 ORM: Prisma`);
+      console.log(`🔧 ORM: Prisma (temporariamente desabilitado)`);
       console.log(`📊 Health: http://localhost:${PORT}/health`);
-      console.log(`🧪 Teste Prisma: http://localhost:${PORT}/api/test-prisma`);
       console.log(`⚡ API: http://localhost:${PORT}/api`);
       console.log(`📅 Iniciado em: ${new Date().toISOString()}`);
     });
