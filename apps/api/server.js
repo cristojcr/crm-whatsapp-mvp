@@ -35,6 +35,7 @@ const { optionalAuth, authenticateToken } = require('./src/middleware/auth');
 const companiesRoutes = require('./src/routes/companies');
 const companySettingsRoutes = require('./src/routes/company-settings');
 const userProfileRoutes = require('./src/routes/user-profile');
+const webhookRoutes = require('./src/routes/webhook');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -76,6 +77,7 @@ app.use('/api/contacts', contactsRoutes);
 app.use('/api/companies', companiesRoutes);
 app.use('/api/company-settings', companySettingsRoutes);
 app.use('/api/user-profile', userProfileRoutes);
+app.use('/api/webhook', webhookRoutes);
 
 // Rotas principais
 app.get('/', (req, res) => {
@@ -86,6 +88,8 @@ app.get('/', (req, res) => {
     health: '/health'
   });
 });
+
+
 
 
 
@@ -174,6 +178,10 @@ app.get('/api', (req, res) => {
       'user-profile.get': 'GET /api/user-profile/:id',
       'user-profile.role': 'PUT /api/user-profile/:id/role',
       'user-profile.company': 'PUT /api/user-profile/:id/company',
+
+      // webhook whatsapp:
+      'webhook.whatsapp.verify': 'GET /api/webhook/whatsapp',
+      'webhook.whatsapp.receive': 'POST /api/webhook/whatsapp',
       
       // Outros endpoints
       contacts: '/api/contacts',
