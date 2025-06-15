@@ -14,10 +14,29 @@ const supabase = createClient(
 );
 
 // ===============================================
+// IMPORTAR PROCESSADOR DE IA
+// ===============================================
+
+let messageProcessor;
+try {
+  messageProcessor = require('../services/message-processor');
+  console.log('✅ Processador de IA carregado com sucesso');
+} catch (error) {
+  console.log('❌ ERRO ESPECÍFICO:', error.message);
+  console.log('❌ STACK:', error.stack);
+  messageProcessor = null;
+}
+
+// ===============================================
 // CONFIGURAÇÃO DO WHATSAPP
 // ===============================================
 const WEBHOOK_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || 'crm_webhook_token_2025';
 const WHATSAPP_APP_SECRET = process.env.WHATSAPP_APP_SECRET || '';
+
+// ===============================================
+// CACHE DE USUÁRIO PADRÃO
+// ===============================================
+let defaultUserId = null;
 
 // ===============================================
 // GET: VERIFICAÇÃO DO WEBHOOK (CHALLENGE)
@@ -99,6 +118,39 @@ router.post('/whatsapp', express.raw({ type: 'application/json' }), async (req, 
     res.status(500).send('Internal Server Error');
   }
 });
+
+// ===============================================
+// FUNÇÃO: BUSCAR USUÁRIO PADRÃO DO SISTEMA
+// ===============================================
+async function getDefaultUserId() {
+  if (defaultUserId) {
+    return defaultUserId;
+  }
+  
+  try {
+    // Buscar primeiro usuário ativo do sistema
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('status', 'active')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    
+    if (error || !user) {
+      console.log('⚠️ Nenhum usuário ativo encontrado no sistema');
+      return null;
+    }
+    
+    defaultUserId = user.id;
+    console.log('👤 Usuário padrão definido:', defaultUserId);
+    return defaultUserId;
+    
+  } catch (error) {
+    console.error('❌ Erro ao buscar usuário padrão:', error);
+    return null;
+  }
+}
 
 // ===============================================
 // FUNÇÃO: PROCESSAR ENTRADA DO WEBHOOK
@@ -223,7 +275,7 @@ async function processSingleMessage(message, phoneNumberId) {
     console.log('👤 Remetente:', senderPhone);
     
     // Buscar ou criar contato
-    const contact = await findOrCreateContact(senderPhone);
+    const contact = await findOrCreateContact(senderPhone, phoneNumberId);
     if (!contact) {
       console.log('❌ Erro ao buscar/criar contato');
       return;
@@ -270,6 +322,36 @@ async function processSingleMessage(message, phoneNumberId) {
     
     console.log('✅ Mensagem salva:', savedMessage.id);
     
+    // ===============================================
+    // 🤖 PROCESSAMENTO DE IA - NOVO!
+    // ===============================================
+    // Processar mensagem com IA (assíncrono para não travar webhook)
+    if (messageProcessor && savedMessage.id) {
+      // Usar setImmediate para processar após responder ao WhatsApp
+      setImmediate(async () => {
+        try {
+          console.log('🤖 Iniciando processamento IA para mensagem:', savedMessage.id);
+          const processingResult = await messageProcessor.processMessage(savedMessage.id);
+          
+          if (processingResult && processingResult.success) {
+            console.log('✅ Processamento IA concluído com sucesso');
+            console.log(`🎯 Intenção detectada: ${processingResult.intention}`);
+            console.log(`💬 Resposta gerada: ${processingResult.response?.substring(0, 100)}...`);
+          } else {
+            console.log('⚠️ Processamento IA finalizado com erro ou sem resultado');
+          }
+        } catch (error) {
+          console.error('❌ Erro no processamento IA:', error.message);
+          // Não falhar o webhook por erro de IA
+        }
+      });
+    } else {
+      console.log('🤖 [FUTURO] Processamento IA não disponível - executando sem IA');
+    }
+    
+    // ===============================================
+    // ATUALIZAR CONVERSA
+    // ===============================================
     // Atualizar última interação da conversa
     const { error: updateError } = await supabase
       .from('conversations')
@@ -284,10 +366,9 @@ async function processSingleMessage(message, phoneNumberId) {
     
     if (updateError) {
       console.error('❌ Erro ao atualizar conversa:', updateError);
+    } else {
+      console.log('✅ Conversa atualizada com sucesso');
     }
-    
-    // TODO: Aqui será adicionado o processamento com IA (próximas atividades)
-    console.log('🤖 [FUTURO] Processar com IA:', content);
     
   } catch (error) {
     console.error('❌ Erro ao processar mensagem individual:', error);
@@ -297,7 +378,7 @@ async function processSingleMessage(message, phoneNumberId) {
 // ===============================================
 // FUNÇÃO: BUSCAR OU CRIAR CONTATO
 // ===============================================
-async function findOrCreateContact(phone) {
+async function findOrCreateContact(phone, phoneNumberId) {
   try {
     // Limpar número de telefone
     const cleanPhone = phone.replace(/\D/g, '');
@@ -314,14 +395,23 @@ async function findOrCreateContact(phone) {
       return existingContact;
     }
     
-    // Criar novo contato
+    // Buscar usuário padrão do sistema
+    const systemUserId = await getDefaultUserId();
+    if (!systemUserId) {
+      console.log('❌ Nenhum usuário ativo no sistema para associar contato');
+      return null;
+    }
+    
+    // Criar novo contato associado ao usuário padrão
     const { data: newContact, error } = await supabase
       .from('contacts')
       .insert({
         phone: cleanPhone,
         name: `Contato ${cleanPhone}`,
         lifecycle_stage: 'lead',
-        user_id: null // Será associado posteriormente
+        user_id: systemUserId, // ✅ CORRIGIDO: Usar usuário válido
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .select()
       .single();
@@ -331,7 +421,7 @@ async function findOrCreateContact(phone) {
       return null;
     }
     
-    console.log('✅ Novo contato criado:', newContact.id);
+    console.log('✅ Novo contato criado:', newContact.id, 'para usuário:', systemUserId);
     return newContact;
     
   } catch (error) {
@@ -358,16 +448,24 @@ async function findOrCreateConversation(contact) {
       return existingConversation;
     }
     
+    // Verificar se o contato tem user_id válido
+    if (!contact.user_id) {
+      console.log('❌ Contato sem user_id válido:', contact.id);
+      return null;
+    }
+    
     // Criar nova conversa
     const { data: newConversation, error } = await supabase
       .from('conversations')
       .insert({
         contact_id: contact.id,
-        user_id: contact.user_id,
+        user_id: contact.user_id, // ✅ CORRIGIDO: Agora contact.user_id é válido
         status: 'open',
         ai_enabled: true,
         priority: 'normal',
-        total_messages: 0
+        total_messages: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .select()
       .single();
@@ -377,7 +475,7 @@ async function findOrCreateConversation(contact) {
       return null;
     }
     
-    console.log('✅ Nova conversa criada:', newConversation.id);
+    console.log('✅ Nova conversa criada:', newConversation.id, 'para usuário:', contact.user_id);
     return newConversation;
     
   } catch (error) {
