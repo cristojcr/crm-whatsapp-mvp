@@ -295,3 +295,89 @@ class ContextAnalyzer {
 }
 
 module.exports = { ContextAnalyzer };
+
+// MEMÓRIA CONVERSACIONAL INTELIGENTE
+class ConversationMemory {
+  
+  constructor() {
+    this.shortTerm = new Map();   // Últimas 5 mensagens
+    this.mediumTerm = new Map();  // Última semana
+    this.longTerm = new Map();    // Histórico completo resumido
+  }
+  
+  async storeContext(conversationId, context) {
+    // Armazenar em diferentes níveis de memória
+    this.shortTerm.set(conversationId, {
+      messages: context.recentMessages,
+      timestamp: Date.now(),
+      ttl: 30 * 60 * 1000 // 30 minutos
+    });
+    
+    this.mediumTerm.set(conversationId, {
+      summary: this.summarizeContext(context),
+      patterns: this.extractPatterns(context),
+      timestamp: Date.now(),
+      ttl: 7 * 24 * 60 * 60 * 1000 // 7 dias
+    });
+    
+    // Atualizar memória de longo prazo
+    await this.updateLongTermMemory(conversationId, context);
+  }
+  
+  async getContext(conversationId) {
+    const shortTerm = this.shortTerm.get(conversationId);
+    const mediumTerm = this.mediumTerm.get(conversationId);
+    const longTerm = await this.getLongTermMemory(conversationId);
+    
+    return {
+      recent: shortTerm?.messages || [],
+      patterns: mediumTerm?.patterns || {},
+      history: longTerm || {},
+      lastUpdate: Math.max(
+        shortTerm?.timestamp || 0,
+        mediumTerm?.timestamp || 0,
+        longTerm?.timestamp || 0
+      )
+    };
+  }
+  
+  summarizeContext(context) {
+    // Implementar resumo inteligente
+    return {
+      mainTopics: this.extractMainTopics(context),
+      sentiment: this.calculateAverageSentiment(context),
+      intentions: this.trackIntentions(context),
+      keyMoments: this.identifyKeyMoments(context)
+    };
+  }
+  
+  extractPatterns(context) {
+    return {
+      responseTime: this.calculateResponsePatterns(context),
+      activeHours: this.identifyActiveHours(context),
+      preferredChannels: this.analyzeChannelPreferences(context),
+      communicationStyle: this.analyzeCommunicationStyle(context)
+    };
+  }
+  
+  // Implementar métodos auxiliares
+  extractMainTopics(context) { return []; }
+  calculateAverageSentiment(context) { return 'neutral'; }
+  trackIntentions(context) { return []; }
+  identifyKeyMoments(context) { return []; }
+  calculateResponsePatterns(context) { return {}; }
+  identifyActiveHours(context) { return []; }
+  analyzeChannelPreferences(context) { return {}; }
+  analyzeCommunicationStyle(context) { return 'formal'; }
+  
+  async updateLongTermMemory(conversationId, context) {
+    // Implementar persistência no banco
+  }
+  
+  async getLongTermMemory(conversationId) {
+    // Implementar busca no banco
+    return {};
+  }
+}
+
+module.exports = { ...module.exports, ConversationMemory };

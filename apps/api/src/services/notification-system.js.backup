@@ -1,0 +1,281 @@
+const nodemailer = require('nodemailer');
+const axios = require('axios');
+
+class NotificationSystem {
+    constructor() {
+        this.emailTransporter = null;
+        this.setupEmailTransporter();
+    }
+
+    setupEmailTransporter() {
+        // Configurar transporter de email (Gmail, Outlook, etc.)
+        if (process.env.EMAIL_HOST && process.env.EMAIL_USER) {
+            this.emailTransporter = nodemailer.createTransport({
+                host: process.env.EMAIL_HOST,
+                port: process.env.EMAIL_PORT || 587,
+                secure: false, // true para 465, false para outras portas
+                auth: {
+                    user: process.env.EMAIL_USER,
+                    pass: process.env.EMAIL_PASS
+                }
+            });
+
+            console.log('✅ Sistema de email configurado');
+        } else {
+            console.log('⚠️ Email não configurado (variáveis faltando)');
+        }
+    }
+
+    async sendSlackNotification(message, channel = '#alerts') {
+        try {
+            const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+            if (!webhookUrl) {
+                console.log('⚠️ Slack webhook não configurado');
+                return false;
+            }
+
+            const payload = {
+                channel,
+                username: 'CRM Monitor',
+                icon_emoji: ':warning:',
+                text: typeof message === 'string' ? message : message.text,
+                attachments: message.attachments || []
+            };
+
+            await axios.post(webhookUrl, payload);
+            console.log('✅ Notificação Slack enviada com sucesso');
+            return true;
+        } catch (error) {
+            console.error('❌ Erro ao enviar notificação Slack:', error.message);
+            return false;
+        }
+    }
+
+    async sendEmailNotification(to, subject, html, text) {
+        try {
+            if (!this.emailTransporter) {
+                console.log('⚠️ Email não configurado');
+                return false;
+            }
+
+            const mailOptions = {
+                from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+                to,
+                subject,
+                html,
+                text
+            };
+
+            const info = await this.emailTransporter.sendMail(mailOptions);
+            console.log('✅ Email enviado:', info.messageId);
+            return true;
+        } catch (error) {
+            console.error('❌ Erro ao enviar email:', error.message);
+            return false;
+        }
+    }
+
+    async sendCriticalAlert(alert) {
+        console.log(`🚨 Enviando alerta crítico: ${alert.message}`);
+
+        const promises = [];
+
+        // Enviar para Slack
+        const slackMessage = {
+            text: `🚨 ALERTA CRÍTICO: ${alert.message}`,
+            attachments: [
+                {
+                    color: alert.level === 'CRITICAL' ? 'danger' : 'warning',
+                    fields: [
+                        {
+                            title: 'Nível',
+                            value: alert.level,
+                            short: true
+                        },
+                        {
+                            title: 'Timestamp',
+                            value: alert.timestamp,
+                            short: true
+                        },
+                        {
+                            title: 'Detalhes',
+                            value: JSON.stringify(alert.details, null, 2),
+                            short: false
+                        }
+                    ]
+                }
+            ]
+        };
+        promises.push(this.sendSlackNotification(slackMessage));
+
+        // Enviar email para admins
+        const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
+        if (adminEmails.length > 0) {
+            const emailSubject = `🚨 CRM Alert ${alert.level}: ${alert.message}`;
+            const emailHtml = this.generateEmailHTML(alert);
+            const emailText = `ALERTA ${alert.level}: ${alert.message}\n\nTimestamp: ${alert.timestamp}\n\nDetalhes: ${JSON.stringify(alert.details, null, 2)}`;
+
+            adminEmails.forEach(email => {
+                promises.push(this.sendEmailNotification(email.trim(), emailSubject, emailHtml, emailText));
+            });
+        }
+
+        // Executar todas as notificações
+        const results = await Promise.allSettled(promises);
+        
+        const successCount = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+        const totalCount = results.length;
+
+        console.log(`📊 Notificações enviadas: ${successCount}/${totalCount}`);
+        return { successCount, totalCount, results };
+    }
+
+    async sendWarningAlert(alert) {
+        console.log(`⚠️ Enviando alerta de warning: ${alert.message}`);
+
+        // Para warnings, enviar apenas para Slack (menos invasivo)
+        const slackMessage = {
+            text: `⚠️ Warning: ${alert.message}`,
+            attachments: [
+                {
+                    color: 'warning',
+                    fields: [
+                        {
+                            title: 'Timestamp',
+                            value: alert.timestamp,
+                            short: true
+                        },
+                        {
+                            title: 'Detalhes',
+                            value: JSON.stringify(alert.details, null, 2),
+                            short: false
+                        }
+                    ]
+                }
+            ]
+        };
+
+        return await this.sendSlackNotification(slackMessage);
+    }
+
+    async sendDailyReport(report) {
+        console.log('📊 Enviando relatório diário...');
+
+        const summary = report.summary;
+        const slackMessage = {
+            text: '📊 Relatório Diário do CRM WhatsApp',
+            attachments: [
+                {
+                    color: summary.successRate > 95 ? 'good' : 
+                           summary.successRate > 90 ? 'warning' : 'danger',
+                    fields: [
+                        {
+                            title: 'Total Requests',
+                            value: summary.totalRequests.toString(),
+                            short: true
+                        },
+                        {
+                            title: 'Taxa de Sucesso',
+                            value: `${summary.successRate.toFixed(1)}%`,
+                            short: true
+                        },
+                        {
+                            title: 'Tempo Médio',
+                            value: `${summary.avgResponseTime.toFixed(0)}ms`,
+                            short: true
+                        },
+                        {
+                            title: 'Uptime',
+                            value: `${summary.uptime.toFixed(1)}%`,
+                            short: true
+                        }
+                    ]
+                }
+            ]
+        };
+
+        return await this.sendSlackNotification(slackMessage, '#reports');
+    }
+
+    generateEmailHTML(alert) {
+        return `
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .alert-box { background: #f8f9fa; border-left: 4px solid #dc3545; padding: 20px; margin: 20px 0; }
+        .critical { border-color: #dc3545; background: #f8d7da; }
+        .warning { border-color: #ffc107; background: #fff3cd; }
+        .details { background: #f1f3f4; padding: 15px; margin: 10px 0; border-radius: 4px; }
+        .button { background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h2>🚨 Alerta CRM WhatsApp</h2>
+    <div class="alert-box ${alert.level.toLowerCase()}">
+        <h3>${alert.level}: ${alert.message}</h3>
+        <p><strong>Timestamp:</strong> ${alert.timestamp}</p>
+        <div class="details">
+            <h4>Detalhes:</h4>
+            <pre>${JSON.stringify(alert.details, null, 2)}</pre>
+        </div>
+        <p>
+            <a href="${process.env.DASHBOARD_URL || 'http://localhost:3001/admin-dashboard'}" class="button">
+                Ver Dashboard
+            </a>
+        </p>
+    </div>
+    <p><small>Este é um alerta automático do sistema CRM WhatsApp.</small></p>
+</body>
+</html>
+        `;
+    }
+
+    async testNotifications() {
+        console.log('🧪 Testando sistema de notificações...');
+
+        const results = {
+            slack: false,
+            email: false,
+            emailConfigured: !!this.emailTransporter,
+            slackConfigured: !!process.env.SLACK_WEBHOOK_URL
+        };
+
+        // Teste Slack
+        if (process.env.SLACK_WEBHOOK_URL) {
+            results.slack = await this.sendSlackNotification('🧪 Teste de notificação CRM WhatsApp - Sistema funcionando!');
+        }
+
+        // Teste Email
+        const testEmails = process.env.ADMIN_EMAILS?.split(',') || [];
+        if (testEmails.length > 0 && this.emailTransporter) {
+            results.email = await this.sendEmailNotification(
+                testEmails[0].trim(),
+                '🧪 Teste CRM WhatsApp',
+                '<h3>Teste de notificação por email</h3><p>Sistema funcionando perfeitamente! ✅</p>',
+                'Teste de notificação por email - Sistema funcionando perfeitamente!'
+            );
+        }
+
+        console.log('📋 Resultados do teste:', results);
+        return results;
+    }
+
+    getStatus() {
+        return {
+            email: {
+                configured: !!this.emailTransporter,
+                host: process.env.EMAIL_HOST || 'not configured',
+                user: process.env.EMAIL_USER || 'not configured'
+            },
+            slack: {
+                configured: !!process.env.SLACK_WEBHOOK_URL,
+                webhook: process.env.SLACK_WEBHOOK_URL ? 'configured' : 'not configured'
+            },
+            adminEmails: process.env.ADMIN_EMAILS?.split(',') || []
+        };
+    }
+}
+
+module.exports = NotificationSystem;

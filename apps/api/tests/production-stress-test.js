@@ -2,7 +2,7 @@ const axios = require('axios');
 
 class ProductionStressTest {
     constructor() {
-        this.baseURL = 'https://escalabots-backend-production.up.railway.app';
+        this.baseURL = 'https://crm-whatsapp-mvp-production.up.railway.app';
         this.results = {
             totalRequests: 0,
             successfulRequests: 0,

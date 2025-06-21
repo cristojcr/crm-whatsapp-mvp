@@ -19,7 +19,11 @@ const INTENTION_TYPES = {
   information: 'Pedido de informações gerais',
   complaint: 'Reclamações, problemas, insatisfação',
   pricing: 'Perguntas sobre preços, valores, custos',
-  other: 'Outras intenções não categorizadas'
+  other: 'Outras intenções não categorizadas',
+  reschedule: 'Reagendamento de consultas existentes',
+  cancellation: 'Cancelamento de agendamentos',
+  availability: 'Consulta de disponibilidade de horários',
+  confirmation: 'Confirmação de agendamentos propostos'
 };
 
 // ===============================================
@@ -33,6 +37,10 @@ const INTENTION_KEYWORDS = {
   information: ['informação', 'info', 'saber', 'conhecer', 'detalhes', 'explicar', 'o que é'],
   complaint: ['reclamação', 'insatisfeito', 'ruim', 'péssimo', 'problema', 'cancelar', 'reembolso'],
   pricing: ['preço', 'valor', 'custa', 'quanto', 'custo', 'tabela', 'orçamento', 'investimento'],
+  reschedule: ['reagendar', 'remarcar', 'mudar horário', 'trocar data', 'transferir', 'mudar agendamento', 'alterar horário', 'preciso mudar', 'quero remarcar', 'posso mudar', 'trocar horário', 'alterar consulta'],
+  cancellation: ['cancelar', 'desmarcar', 'não posso ir', 'não vou conseguir', 'quero cancelar', 'preciso cancelar', 'desmarcar consulta', 'não posso mais', 'cancelar agendamento', 'não vai dar'],
+  availability: ['horários disponíveis', 'que horas tem', 'horários livres', 'disponibilidade', 'quando tem vaga', 'horários vagos', 'agenda livre'],
+  confirmation: ['confirmar', 'ok pode ser', 'aceito', 'tá bom', 'perfeito', 'confirmo', 'pode marcar', 'fecha então', 'vou sim'],
   other: []
 };
 
@@ -240,12 +248,81 @@ async function analyzeHybrid(messageContent, context = {}) {
 }
 
 // ===============================================
+// FUNÇÃO: DETECTAR MENÇÃO A SERVIÇOS
+// ===============================================
+function detectServiceMention(message, availableServices = []) {
+  try {
+    const messageLower = message.toLowerCase();
+    
+    for (const service of availableServices) {
+      const serviceName = service.name.toLowerCase();
+      const words = serviceName.split(' ');
+      
+      // Verificar se todas as palavras do serviço estão na mensagem
+      const allWordsFound = words.every(word => 
+        messageLower.includes(word) || 
+        messageLower.includes(word.substring(0, word.length - 1)) // plural/singular
+      );
+      
+      if (allWordsFound) {
+        return {
+          service: service,
+          confidence: 0.9
+        };
+      }
+    }
+    
+    return null;
+    
+  } catch (error) {
+    console.error('❌ Erro ao detectar serviço:', error);
+    return null;
+  }
+}
+
+// ===============================================
+// FUNÇÃO: EXTRAIR INFORMAÇÕES DE DATA/HORA
+// ===============================================
+function extractDateTime(message) {
+  try {
+    const patterns = {
+      // Dias da semana
+      weekdays: /\b(segunda|terça|quarta|quinta|sexta|sábado|domingo|seg|ter|qua|qui|sex|sáb|dom)\b/gi,
+      // Períodos do dia  
+      periods: /\b(manhã|tarde|noite|manha|de manhã|de tarde|a tarde|a noite)\b/gi,
+      // Horários específicos
+      times: /\b(\d{1,2}):?(\d{0,2})\s?(h|hs|horas?)?\b/gi,
+      // Datas relativas
+      relative: /\b(hoje|amanhã|depois de amanha|na proxima|próxima|semana que vem)\b/gi
+    };
+
+    const extracted = {};
+
+    // Extrair padrões
+    Object.keys(patterns).forEach(pattern => {
+      const matches = message.match(patterns[pattern]);
+      if (matches) {
+        extracted[pattern] = matches;
+      }
+    });
+
+    return extracted;
+    
+  } catch (error) {
+    console.error('❌ Erro ao extrair data/hora:', error);
+    return {};
+  }
+}
+
+// ===============================================
 // EXPORTAR FUNÇÕES
 // ===============================================
 module.exports = {
   analyze,
   analyzeFallback,
   analyzeHybrid,
+  detectServiceMention,
+  extractDateTime,
   INTENTION_TYPES,
   INTENTION_KEYWORDS
 };

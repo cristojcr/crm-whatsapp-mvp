@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Estatísticas - Teste</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f7fa; }
+        .card { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .value { font-size: 24px; font-weight: bold; color: #333; }
+    </style>
+</head>
+<body>
+    <h1>📊 CRM Estatísticas</h1>
+    <div id="content">Carregando...</div>
+    
+    <script>
+        async function loadStats() {
+            try {
+                console.log('Iniciando carregamento...');
+                const response = await fetch('/api/statistics/overview');
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Data received:', data);
+                
+                document.getElementById('content').innerHTML = `
+                    <div class="card">
+                        <h3>👥 Usuários</h3>
+                        <div class="value">${data.data.users_total}</div>
+                    </div>
+                    <div class="card">
+                        <h3>💬 Mensagens Hoje</h3>
+                        <div class="value">${data.data.messages_today}</div>
+                    </div>
+                    <div class="card">
+                        <h3>📅 Assinaturas Ativas</h3>
+                        <div class="value">${data.data.active_subscriptions}</div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Erro:', error);
+                document.getElementById('content').innerHTML = `
+                    <div class="card" style="border-left: 4px solid red;">
+                        <h3>❌ Erro</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Carregar quando página estiver pronta
+        document.addEventListener('DOMContentLoaded', loadStats);
+    </script>
+</body>
+</html>

@@ -20,7 +20,11 @@ const authLimiter = rateLimit({
 // POST /api/auth/register - Registrar novo usuário
 router.post('/register', authLimiter, async (req, res) => {
   try {
-    const { email, password, name, phone } = req.body;
+    // 🔍 DEBUG: Ver o que está chegando na API
+    console.log('🔍 Dados recebidos na API:', req.body);
+    console.log('🎯 Plano recebido:', req.body.plan);
+
+const { email, password, name, phone, business_name, plan } = req.body;
 
     // Validações básicas
     if (!email || !password) {
@@ -65,6 +69,10 @@ router.post('/register', authLimiter, async (req, res) => {
           email: data.user.email,
           name: name || null,
           phone: phone || null,
+          business_name: business_name || null,
+          plan: plan || 'basic',
+          status: 'active',
+          credits_balance: plan === 'premium' ? 10000 : plan === 'pro' ? 5000 : 2000,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })

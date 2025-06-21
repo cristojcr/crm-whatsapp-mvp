@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Inteligente - Cadastro de Usuários</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+
+        .title {
+            font-size: 32px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: #6b7280;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .plans-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .plans-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .plan-card {
+            border: 2px solid transparent;
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .plan-card.basic {
+            background: rgba(107, 114, 128, 0.1);
+            border-color: rgba(107, 114, 128, 0.2);
+        }
+
+        .plan-card.pro {
+            background: linear-gradient(135deg, rgba(37, 211, 102, 0.1) 0%, rgba(18, 140, 126, 0.1) 100%);
+            border-color: rgba(37, 211, 102, 0.3);
+        }
+
+        .plan-card.premium {
+            background: linear-gradient(135deg, rgba(225, 48, 108, 0.1) 0%, rgba(131, 58, 180, 0.1) 50%, rgba(253, 29, 29, 0.1) 100%);
+            border-color: rgba(225, 48, 108, 0.3);
+        }
+
+        .plan-card.selected {
+            transform: scale(1.02);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.2);
+        }
+
+        .plan-card.basic.selected {
+            border-color: #6b7280;
+            box-shadow: 0 15px 40px rgba(107, 114, 128, 0.2);
+        }
+
+        .plan-card.pro.selected {
+            border-color: #25d366;
+            box-shadow: 0 15px 40px rgba(37, 211, 102, 0.2);
+        }
+
+        .plan-card.premium.selected {
+            border-color: #e1306c;
+            box-shadow: 0 15px 40px rgba(225, 48, 108, 0.2);
+        }
+
+        .plan-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .plan-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .plan-price {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .plan-features {
+            list-style: none;
+            margin: 12px 0;
+        }
+
+        .plan-features li {
+            padding: 4px 0;
+            color: #6b7280;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid rgba(209, 213, 219, 0.5);
+            border-radius: 12px;
+            font-size: 16px;
+            background: rgba(255, 255, 255, 0.7);
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .form-input:focus {
+            border-color: #667eea;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: all 0.3s ease;
+        }
+
+        .notification.success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .notification.error {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .plans-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .title {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1 class="title">🚀 CRM Inteligente - Cadastro</h1>
+            <p class="subtitle">Transforme seu WhatsApp em uma máquina de vendas inteligente</p>
+        </div>
+
+        <div class="main-content">
+            <!-- Seleção de Planos -->
+            <div class="plans-section">
+                <h3 class="section-title">
+                    💎 Escolha o Plano
+                </h3>
+                
+                <div class="plans-grid">
+                    <!-- Plano Básico (Referência) -->
+                    <div class="plan-card basic" data-plan="basic">
+                        <div class="plan-header">
+                            <span class="plan-name">📱 Básico</span>
+                            <span class="plan-price">R$ 89</span>
+                        </div>
+                        <ul class="plan-features">
+                            <li>✅ Apenas WhatsApp</li>
+                            <li>✅ 2.000 créditos/mês</li>
+                            <li>✅ IA básica</li>
+                            <li>✅ Agendamento simples</li>
+                        </ul>
+                    </div>
+
+                    <!-- Plano Pro -->
+                    <div class="plan-card pro" data-plan="pro">
+                        <div class="plan-header">
+                            <span class="plan-name">🚀 Pro</span>
+                            <span class="plan-price">R$ 149</span>
+                        </div>
+                        <ul class="plan-features">
+                            <li>💚 Escolhe 1 canal (WhatsApp OU Instagram OU Telegram)</li>
+                            <li>✅ 5.000 créditos/mês</li>
+                            <li>✅ IA avançada</li>
+                            <li>✅ Automações completas</li>
+                            <li>✅ Relatórios avançados</li>
+                        </ul>
+                    </div>
+
+                    <!-- Plano Premium -->
+                    <div class="plan-card premium" data-plan="premium">
+                        <div class="plan-header">
+                            <span class="plan-name">👑 Premium</span>
+                            <span class="plan-price">R$ 199</span>
+                        </div>
+                        <ul class="plan-features">
+                            <li>🌟 TODOS os canais (WhatsApp + Instagram + Telegram)</li>
+                            <li>✅ 10.000 créditos/mês</li>
+                            <li>✅ IA premium + clonagem de voz</li>
+                            <li>✅ Multi-profissional</li>
+                            <li>✅ White label</li>
+                            <li>✅ Suporte prioritário</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Formulário de Cadastro -->
+            <div class="form-section">
+                <h3 class="section-title">
+                    👤 Dados do Usuário
+                </h3>
+                
+                <form id="userForm">
+                    <div class="form-group">
+                        <label class="form-label" for="name">Nome Completo</label>
+                        <input type="text" id="name" class="form-input" placeholder="Ex: Maria Silva" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="email">E-mail</label>
+                        <input type="email" id="email" class="form-input" placeholder="Ex: maria.pro@gmail.com" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="phone">Telefone</label>
+                        <input type="tel" id="phone" class="form-input" placeholder="Ex: +5511999887766" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="business_name">Nome do Negócio (Opcional)</label>
+                        <input type="text" id="business_name" class="form-input" placeholder="Ex: Clínica Dr. Maria">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="password">Senha</label>
+                        <input type="password" id="password" class="form-input" placeholder="Mínimo 6 caracteres" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Plano Selecionado</label>
+                        <input type="text" id="selectedPlan" class="form-input" readonly placeholder="Selecione um plano ao lado">
+                    </div>
+
+                    <button type="submit" class="submit-btn" id="submitBtn">
+                        🚀 Criar Usuário
+                    </button>
+                </form>
+            </div>
+        </div>
+
+
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+
+    <script>
+        // Estado da aplicação
+        let selectedPlan = null;
+
+        // API Configuration
+        const API_BASE_URL = 'http://localhost:3001/api';
+
+        // Elementos DOM
+        const planCards = document.querySelectorAll('.plan-card');
+        const selectedPlanInput = document.getElementById('selectedPlan');
+        const userForm = document.getElementById('userForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const notification = document.getElementById('notification');
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', function() {
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // Seleção de planos
+            planCards.forEach(card => {
+                card.addEventListener('click', function() {
+                    // Remove seleção anterior
+                    planCards.forEach(c => c.classList.remove('selected'));
+                    
+                    // Adiciona seleção atual
+                    this.classList.add('selected');
+                    
+                    // Atualiza estado
+                    selectedPlan = this.dataset.plan;
+                    selectedPlanInput.value = selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1);
+                });
+            });
+
+            // Submit do formulário
+            userForm.addEventListener('submit', handleFormSubmit);
+        }
+
+        async function handleFormSubmit(e) {
+            e.preventDefault();
+            
+            if (!selectedPlan) {
+                showNotification('Selecione um plano primeiro!', 'error');
+                return;
+            }
+
+            const formData = new FormData(e.target);
+            const userData = {
+                name: formData.get('name') || document.getElementById('name').value,
+                email: formData.get('email') || document.getElementById('email').value,
+                phone: formData.get('phone') || document.getElementById('phone').value,
+                business_name: formData.get('business_name') || document.getElementById('business_name').value,
+                password: formData.get('password') || document.getElementById('password').value,
+                plan: selectedPlan
+            };
+
+            // Validação básica
+            if (!userData.email || !userData.password || !userData.name) {
+                showNotification('Preencha todos os campos obrigatórios!', 'error');
+                return;
+            }
+
+            try {
+                setLoading(true);
+                
+                // DEBUG: Ver o que está sendo enviado
+                console.log('🔍 Dados que serão enviados:', userData);
+                console.log('🎯 Plano selecionado:', selectedPlan);
+                
+                // Chama a API de registro
+                const response = await fetch(`${API_BASE_URL}/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(userData)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // Sucesso
+                    showNotification(`✅ Usuário ${userData.name} criado com sucesso!`, 'success');
+                    
+                    // Limpa formulário
+                    userForm.reset();
+                    clearPlanSelection();
+                    
+                } else {
+                    // Erro da API
+                    showNotification(`❌ Erro: ${result.message || 'Erro desconhecido'}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Erro ao criar usuário:', error);
+                showNotification('❌ Erro de conexão com a API', 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function setLoading(loading) {
+            if (loading) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<div class="loading-spinner"></div>Criando usuário...';
+            } else {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '🚀 Criar Usuário';
+            }
+        }
+
+        function clearPlanSelection() {
+            planCards.forEach(card => card.classList.remove('selected'));
+            selectedPlan = null;
+            selectedPlanInput.value = '';
+        }
+
+
+
+        function showNotification(message, type) {
+            notification.textContent = message;
+            notification.className = `notification ${type}`;
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 4000);
+        }
+
+        // Funcionalidade adicional: Auto-preencher com exemplos
+        function fillExampleData(plan) {
+            const examples = {
+                pro: {
+                    name: 'Maria Silva',
+                    email: 'maria.pro@gmail.com',
+                    phone: '+5511999887766',
+                    business_name: 'Clínica Dra. Maria',
+                    password: '123456'
+                },
+                premium: {
+                    name: 'Carlos Premium',
+                    email: 'carlos.premium@gmail.com',
+                    phone: '+5511988776655',
+                    business_name: 'Consultório Dr. Carlos',
+                    password: '123456'
+                }
+            };
+
+            const example = examples[plan];
+            if (example) {
+                document.getElementById('name').value = example.name;
+                document.getElementById('email').value = example.email;
+                document.getElementById('phone').value = example.phone;
+                document.getElementById('business_name').value = example.business_name;
+                document.getElementById('password').value = example.password;
+            }
+        }
+
+        // Adicionar double-click para preencher exemplo
+        document.querySelector('[data-plan="pro"]').addEventListener('dblclick', () => {
+            fillExampleData('pro');
+        });
+
+        document.querySelector('[data-plan="premium"]').addEventListener('dblclick', () => {
+            fillExampleData('premium');
+        });
+    </script>
+</body>
+</html>
