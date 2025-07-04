@@ -7,6 +7,8 @@ const intentionAnalyzer = require('./intention-analyzer');
 const { deepseekClient } = require('./ai-config');
 const { supabase } = require('../config/supabase');
 const moment = require('moment-timezone');
+const ProfessionalManager = require('./professional-manager');
+
 // Constantes de intenção
 const INTENTIONS = {
     SCHEDULING: 'scheduling',
@@ -53,7 +55,7 @@ class AppointmentProcessor {
             const { data: services, error: servicesError } = await supabase
                 .from('services')
                 .select('*')
-                .eq('company_id', userProfile.company_id)
+                .eq('user_id', user_id)
                 .eq('is_active', true)
                 .order('sort_order');
 
@@ -64,7 +66,7 @@ class AppointmentProcessor {
                 console.log('🔍 DEBUG: services encontrados:', services);
                 console.log('🔍 DEBUG: servicesList length:', services?.length || 0);
                 // Garantir que services é sempre um array
-                const servicesList = services || [];
+                const servicesList = Array.isArray(services) ? services : [];
 
             // 3. Detectar serviço mencionado
             const serviceDetection = intentionAnalyzer.detectServiceMention(message, servicesList);
@@ -519,6 +521,396 @@ class AppointmentProcessor {
             response: 'Ação executada com sucesso!'
         };
     }
+
+    // ===============================================
+    // PROCESSAMENTO MULTI-PROFISSIONAL (PASSO 3.2)
+    // ===============================================
+
+    static async processMultiProfessionalScheduling(message, contactData, companyId) {
+        try {
+            console.log('👥 Processando agendamento multi-profissional');
+            
+            // Análise com preferências
+            const analysis = await intentionAnalyzer.analyzeWithProfessionalPreference(
+                message, 
+                contactData.id, 
+                companyId
+            );
+            
+            if (!analysis.isSchedulingIntent) {
+                return {
+                    success: false,
+                    response: "Não consegui identificar uma solicitação de agendamento. Como posso ajudar?",
+                    confidence: analysis.confidence
+                };
+            }
+            
+            // Extrair data/hora da mensagem
+            const dateTimeInfo = this.extractDateTime(message);
+            if (!dateTimeInfo.success) {
+                return await this.handleDateTimeQuery(analysis);
+            }
+            
+            // Processar baseado na abordagem sugerida
+            const result = await this.executeSchedulingApproach(
+                analysis.suggested_approach,
+                dateTimeInfo,
+                contactData,
+                companyId,
+                analysis
+            );
+            
+            return result;
+            
+        } catch (error) {
+            console.error('❌ Erro no processamento multi-profissional:', error);
+            return {
+                success: false,
+                response: "Desculpe, houve um erro ao processar seu agendamento. Tente novamente.",
+                error: error.message
+            };
+        }
+    }
+
+    static async executeSchedulingApproach(approach, dateTimeInfo, contactData, companyId, analysis) {
+        switch (approach.approach) {
+            case 'specific_professional':
+                return await this.scheduleWithSpecificProfessional(
+                    approach.professional_name,
+                    dateTimeInfo,
+                    contactData,
+                    companyId
+                );
+                
+            case 'specialty_based':
+                return await this.scheduleWithSpecialist(
+                    approach.specialty,
+                    dateTimeInfo,
+                    contactData,
+                    companyId
+                );
+                
+            case 'historical_preference':
+                return await this.scheduleWithPreferredProfessional(
+                    approach.professional_id,
+                    dateTimeInfo,
+                    contactData,
+                    companyId
+                );
+                
+            case 'availability_based':
+            case 'balanced_suggestion':
+            default:
+                return await this.scheduleWithBestAvailable(
+                    dateTimeInfo,
+                    contactData,
+                    companyId,
+                    approach.urgency
+                );
+        }
+    }
+
+    static async scheduleWithSpecificProfessional(professionalName, dateTimeInfo, contactData, companyId) {
+        try {
+            // Buscar profissional pelo nome
+            const { data: professionals } = await supabase
+                .from('professionals')
+                .select('*')
+                .eq('company_id', companyId)
+                .eq('is_active', true)
+                .ilike('name', `%${professionalName}%`);
+            
+            if (!professionals?.length) {
+                return {
+                    success: false,
+                    response: `Não encontrei nenhum profissional com o nome "${professionalName}". ` +
+                            `Posso sugerir outros profissionais disponíveis?`,
+                    suggestion_needed: true
+                };
+            }
+            
+            const professional = professionals[0];
+            
+            // Verificar disponibilidade
+            const ScheduleManager = require('./schedule-manager');
+            const availability = await ScheduleManager.checkProfessionalAvailability(
+                professional.id,
+                dateTimeInfo.appointmentTime,
+                60
+            );
+            
+            if (!availability.success) {
+                // Sugerir horários alternativos com este profissional
+                const alternatives = await ScheduleManager.suggestAlternativeTimes(
+                    companyId,
+                    professional.id,
+                    dateTimeInfo.appointmentTime,
+                    60
+                );
+                
+                if (alternatives.success && alternatives.suggestions.length > 0) {
+                    const alternativesList = alternatives.suggestions
+                        .slice(0, 3)
+                        .map(s => s.formatted_time)
+                        .join(', ');
+                    
+                    return {
+                        success: false,
+                        response: `${professional.name} não está disponível em ${dateTimeInfo.formattedDateTime}. ` +
+                                `Horários disponíveis com ${professional.name}: ${alternativesList}. ` +
+                                `Qual prefere?`,
+                        alternatives: alternatives.suggestions,
+                        professional: professional
+                    };
+                } else {
+                    return {
+                        success: false,
+                        response: `${professional.name} não está disponível em ${dateTimeInfo.formattedDateTime}. ` +
+                                `Posso sugerir outros profissionais disponíveis neste horário?`,
+                        suggestion_needed: true
+                    };
+                }
+            }
+            
+            // Criar agendamento
+            const appointmentResult = await this.createAppointmentWithProfessional(
+                professional,
+                dateTimeInfo,
+                contactData,
+                companyId,
+                'Cliente solicitou especificamente'
+            );
+            
+            return appointmentResult;
+            
+        } catch (error) {
+            console.error('❌ Erro ao agendar com profissional específico:', error);
+            return {
+                success: false,
+                response: "Erro ao processar agendamento com profissional específico."
+            };
+        }
+    }
+
+    static async scheduleWithSpecialist(specialty, dateTimeInfo, contactData, companyId) {
+        try {
+            // Buscar especialistas
+            const { data: specialists } = await supabase
+                .from('professionals')
+                .select('*')
+                .eq('company_id', companyId)
+                .eq('is_active', true)
+                .ilike('specialty', `%${specialty}%`)
+                .order('display_order');
+            
+            if (!specialists?.length) {
+                return {
+                    success: false,
+                    response: `Não temos especialistas em ${specialty} no momento. ` +
+                            `Posso agendar com um clínico geral?`,
+                    suggestion_needed: true
+                };
+            }
+            
+            // Verificar disponibilidade dos especialistas
+            const ScheduleManager = require('./schedule-manager');
+            for (const specialist of specialists) {
+                const availability = await ScheduleManager.checkProfessionalAvailability(
+                    specialist.id,
+                    dateTimeInfo.appointmentTime,
+                    60
+                );
+                
+                if (availability.success) {
+                    const appointmentResult = await this.createAppointmentWithProfessional(
+                        specialist,
+                        dateTimeInfo,
+                        contactData,
+                        companyId,
+                        `Especialista em ${specialty}`
+                    );
+                    
+                    return appointmentResult;
+                }
+            }
+            
+            // Nenhum especialista disponível - sugerir alternativas
+            const alternatives = await ScheduleManager.suggestAlternativeTimes(
+                companyId,
+                specialists[0].id,
+                dateTimeInfo.appointmentTime,
+                60
+            );
+            
+            if (alternatives.success && alternatives.suggestions.length > 0) {
+                const nextAvailable = alternatives.suggestions[0];
+                return {
+                    success: false,
+                    response: `Nossos especialistas em ${specialty} não estão disponíveis em ${dateTimeInfo.formattedDateTime}. ` +
+                            `O próximo horário disponível com ${nextAvailable.professional.name} é ${nextAvailable.formatted_time}. ` +
+                            `Confirma?`,
+                    suggested_appointment: nextAvailable
+                };
+            }
+            
+            return {
+                success: false,
+                response: `Especialistas em ${specialty} não disponíveis hoje. ` +
+                        `Posso sugerir outros profissionais ou outros dias?`,
+                suggestion_needed: true
+            };
+            
+        } catch (error) {
+            console.error('❌ Erro ao agendar com especialista:', error);
+            return {
+                success: false,
+                response: "Erro ao buscar especialista."
+            };
+        }
+    }
+
+    static async scheduleWithBestAvailable(dateTimeInfo, contactData, companyId, urgency = 'normal') {
+        try {
+            // Sugerir melhor profissional
+            const suggestion = await ProfessionalManager.suggestBestProfessional(
+                companyId,
+                contactData.id,
+                dateTimeInfo.appointmentTime
+            );
+            
+            if (!suggestion.success) {
+                return {
+                    success: false,
+                    response: "Não consegui encontrar profissionais disponíveis. Tente outro horário."
+                };
+            }
+            
+            const professional = suggestion.professional;
+            
+            // Verificar disponibilidade
+            const ScheduleManager = require('./schedule-manager');
+            const availability = await ScheduleManager.checkProfessionalAvailability(
+                professional.id,
+                dateTimeInfo.appointmentTime,
+                60
+            );
+            
+            if (availability.success) {
+                const appointmentResult = await this.createAppointmentWithProfessional(
+                    professional,
+                    dateTimeInfo,
+                    contactData,
+                    companyId,
+                    suggestion.reason
+                );
+                
+                return appointmentResult;
+            } else {
+                // Sugerir próximos horários disponíveis
+                const alternatives = await ScheduleManager.suggestAlternativeTimes(
+                    companyId,
+                    null, // Qualquer profissional
+                    dateTimeInfo.appointmentTime,
+                    60
+                );
+                
+                if (alternatives.success && alternatives.suggestions.length > 0) {
+                    const topSuggestions = alternatives.suggestions
+                        .slice(0, 3)
+                        .map(s => `${s.formatted_time} com ${s.professional.name}`)
+                        .join('\n');
+                    
+                    return {
+                        success: false,
+                        response: `${dateTimeInfo.formattedDateTime} não está disponível. ` +
+                                `Próximos horários:\n${topSuggestions}\n\nQual prefere?`,
+                        alternatives: alternatives.suggestions
+                    };
+                }
+                
+                return {
+                    success: false,
+                    response: "Não temos horários disponíveis próximos. Posso verificar outros dias?"
+                };
+            }
+            
+        } catch (error) {
+            console.error('❌ Erro ao agendar com melhor disponível:', error);
+            return {
+                success: false,
+                response: "Erro ao buscar horários disponíveis."
+            };
+        }
+    }
+
+    static async createAppointmentWithProfessional(professional, dateTimeInfo, contactData, companyId, reason) {
+        try {
+            // Criar agendamento
+            const { data: appointment, error } = await supabase
+                .from('appointments')
+                .insert({
+                    contact_id: contactData.id,
+                    professional_id: professional.id,
+                    scheduled_at: dateTimeInfo.appointmentTime,
+                    duration_minutes: 60,
+                    status: 'CONFIRMED',
+                    auto_assigned_reason: reason,
+                    created_at: new Date().toISOString()
+                })
+                .select()
+                .single();
+            
+            if (error) throw error;
+            
+            // Criar evento no Google Calendar
+            if (professional.google_calendar_email) {
+                const ScheduleManager = require('./schedule-manager');
+                await ScheduleManager.createGoogleCalendarEvent({
+                    ...appointment,
+                    professional_email: professional.google_calendar_email
+                });
+            }
+            
+            // Atualizar preferência do cliente
+            await ProfessionalManager.updateClientPreference(
+                contactData.id,
+                companyId,
+                professional.id
+            );
+            
+            return {
+                success: true,
+                response: `✅ Agendamento confirmado!\n\n` +
+                        `📅 Data: ${dateTimeInfo.formattedDateTime}\n` +
+                        `👨‍⚕️ Profissional: ${professional.name}\n` +
+                        `📍 ${reason}\n\n` +
+                        `Enviaremos lembretes 24h e 2h antes. Até lá!`,
+                appointment,
+                professional
+            };
+            
+        } catch (error) {
+            console.error('❌ Erro ao criar agendamento:', error);
+            return {
+                success: false,
+                response: "Erro ao confirmar agendamento. Tente novamente."
+            };
+        }
+    }
+
+    static async handleDateTimeQuery(analysis) {
+        return {
+            success: false,
+            response: "Para qual data e horário gostaria de agendar? " +
+                    "Exemplo: 'amanhã às 14h' ou 'quinta-feira de manhã'",
+            needs_datetime: true
+        };
+    }
+
+    static extractDateTime(message) {
+        // Usando o método do intention-analyzer
+        return intentionAnalyzer.extractDateTime(message);
+    }
 }
 
-module.exports = new AppointmentProcessor();
+module.exports = AppointmentProcessor;

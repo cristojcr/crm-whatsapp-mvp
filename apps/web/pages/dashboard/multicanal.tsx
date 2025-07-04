@@ -16,6 +16,11 @@ export default function MultiCanalPage() {
     const [channels, setChannels] = useState([]);
     const [channelsLoading, setChannelsLoading] = useState(true);
 
+    // 🔒 NOVOS ESTADOS PARA VERIFICAÇÃO DE CONSENTIMENTOS
+    const [checkingConsents, setCheckingConsents] = useState(false);
+    const [consentsChecked, setConsentsChecked] = useState(false);
+    const [consentsStatus, setConsentsStatus] = useState(null);
+
     // Efeito para autenticação
     useEffect(() => {
         const checkAuth = async () => {
@@ -31,7 +36,62 @@ export default function MultiCanalPage() {
         checkAuth();
     }, []);
 
-    // ✅ EFEITO PARA BUSCAR OS CANAIS QUANDO O USUÁRIO FOR DEFINIDO
+    // 🔒 NOVO: VERIFICAÇÃO OPCIONAL DE CONSENTIMENTOS LGPD/GDPR
+    useEffect(() => {
+        const checkUserConsents = async () => {
+            // Só verificar se usuário está carregado e ainda não verificamos os consentimentos
+            if (user?.email && !consentsChecked && !checkingConsents) {
+                setCheckingConsents(true);
+                
+                try {
+                    console.log('🔍 Verificando consentimentos LGPD/GDPR para usuário:', user.email);
+                    
+                    // 🔧 CORREÇÃO: usar EMAIL em vez de ID
+                    const response = await fetch(`http://localhost:3001/api/consent-form/user/${encodeURIComponent(user.email)}`, {
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('📋 Consentimentos encontrados:', data.consents?.length || 0);
+                        
+                        // Verificar se tem consentimentos obrigatórios
+                        const requiredConsentTypes = ['data_processing', 'cookies'];
+                        const hasRequiredConsents = data.consents?.some(consent => 
+                            requiredConsentTypes.includes(consent.consent_type) && consent.consent_given
+                        );
+                        
+                        // 🎯 NOVA LÓGICA: NÃO FORÇAR, APENAS INFORMAR
+                        if (!hasRequiredConsents) {
+                            console.log('ℹ️ Consentimentos opcionais não preenchidos - mostrando banner');
+                            setConsentsStatus('missing');
+                            // ❌ REMOVIDO: router.push('/onboarding/consentimentos');
+                        } else {
+                            console.log('✅ Consentimentos encontrados - usuário completo');
+                            setConsentsStatus('complete');
+                        }
+                    } else {
+                        console.log('ℹ️ API de consentimentos não disponível - prosseguindo normalmente');
+                        setConsentsStatus('api_unavailable');
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Erro ao verificar consentimentos:', error);
+                    setConsentsStatus('error');
+                } finally {
+                    setCheckingConsents(false);
+                    setConsentsChecked(true);
+                }
+            }
+        };
+        
+        checkUserConsents();
+    }, [user, consentsChecked, checkingConsents]);
+
+    // ✅ EFEITO PARA BUSCAR OS CANAIS QUANDO O USUÁRIO FOR DEFINIDO E CONSENTIMENTOS VERIFICADOS
+    // ✅ EFEITO PARA BUSCAR OS CANAIS (SEM DEPENDÊNCIA DE CONSENTIMENTOS)
     useEffect(() => {
         const loadChannels = async () => {
             if (user?.id) {
@@ -47,7 +107,7 @@ export default function MultiCanalPage() {
             }
         };
         loadChannels();
-    }, [user]); // Roda sempre que o 'user' mudar
+    }, [user]);
 
     // Função para logout
     const handleLogout = async () => {
@@ -55,10 +115,74 @@ export default function MultiCanalPage() {
         router.push('/login');
     };
     
+    // 🔒 COMPONENTE: Banner de consentimentos opcional
+    const ConsentBanner = ({ status, onDismiss, onGoToConsents }) => {
+        if (status !== 'missing') return null;
+        
+        const [dismissed, setDismissed] = useState(false);
+        
+        if (dismissed) return null;
+        
+        const handleDismiss = () => {
+            setDismissed(true);
+            if (onDismiss) onDismiss();
+            localStorage.setItem('consent_banner_dismissed', 'true');
+        };
+        
+        useEffect(() => {
+            const wasDismissed = localStorage.getItem('consent_banner_dismissed');
+            if (wasDismissed) setDismissed(true);
+        }, []);
+        
+        return (
+            <div style={styles.consentBanner}>
+                <div style={styles.consentBannerContent}>
+                    <div style={styles.consentBannerIcon}>🔒</div>
+                    <div style={styles.consentBannerText}>
+                        <h4 style={styles.consentBannerTitle}>
+                            Consentimentos LGPD/GDPR Opcionais
+                        </h4>
+                        <p style={styles.consentBannerDescription}>
+                            Para uma experiência personalizada, configure suas preferências de privacidade.
+                            <strong> Totalmente opcional!</strong>
+                        </p>
+                    </div>
+                    <div style={styles.consentBannerActions}>
+                        <button 
+                            onClick={onGoToConsents}
+                            style={styles.consentBannerButton}
+                        >
+                            📝 Configurar
+                        </button>
+                        <button 
+                            onClick={handleDismiss}
+                            style={styles.consentBannerDismiss}
+                        >
+                            ✕
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
     // ✅ FUNÇÃO PARA OS FILHOS ATUALIZAREM O ESTADO DO PAI
     const handleChannelsUpdate = (updatedChannels) => {
         setChannels(updatedChannels);
     };
+
+    // 🔒 ATUALIZAÇÃO: Renderização de verificação (opcional)
+    if (checkingConsents && user) {
+        return (
+            <div style={styles.loadingContainer}>
+                <div style={styles.loadingCard}>
+                    <div style={styles.spinner}></div>
+                    <h2 style={styles.loadingTitle}>🔒 Verificando Conformidade</h2>
+                    <p style={styles.loadingText}>Verificando consentimentos LGPD/GDPR...</p>
+                    <p style={styles.loadingSubtext}>Você pode prosseguir mesmo sem consentimentos</p>
+                </div>
+            </div>
+        );
+    }
 
     // Renderização condicional de Loading e Acesso
     if (loading) {
@@ -118,6 +242,15 @@ export default function MultiCanalPage() {
                             </div>
                         </div>
                         
+                        {/* 🔒 NOVO: Botão de acesso rápido aos consentimentos */}
+                        <button 
+                            onClick={() => router.push('/onboarding/consentimentos')}
+                            style={styles.consentButton}
+                            title="Gerenciar consentimentos LGPD/GDPR"
+                        >
+                            🔒 Privacidade
+                        </button>
+                        
                         <button onClick={handleLogout} style={styles.logoutButton}>
                             🚪 Sair
                         </button>
@@ -152,12 +285,21 @@ export default function MultiCanalPage() {
                 </div>
             </div>
 
+            {/* 🔒 BANNER OPCIONAL DE CONSENTIMENTOS */}
+            {consentsStatus === 'missing' && (
+                <ConsentBanner 
+                    status={consentsStatus}
+                    onGoToConsents={() => router.push('/onboarding/consentimentos')}
+                    onDismiss={() => setConsentsStatus('dismissed')}
+                />
+            )}
             {/* ✅ CONTEÚDO DAS ABAS AGORA CORRETAMENTE CONECTADO */}
             <div style={styles.dashboardContainer}>
                 {activeTab === 'dashboard' && (
                     <MultiChannelDashboard 
                         channels={channels} 
                         loading={channelsLoading} 
+                        user={user}
                     />
                 )}
                 {activeTab === 'settings' && (
@@ -185,7 +327,7 @@ export default function MultiCanalPage() {
     );
 }
 
-// ✅ ESTILOS PREMIUM COM GRADIENTE ROXO
+// ✅ ESTILOS PREMIUM COM GRADIENTE ROXO + NOVOS ESTILOS PARA CONSENTIMENTOS
 const styles = {
     container: {
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -355,6 +497,22 @@ const styles = {
         fontSize: '12px',
         margin: 0
     },
+    
+    // 🔒 NOVO: Botão de consentimentos
+    consentButton: {
+        background: 'rgba(76, 175, 80, 0.2)',
+        border: '1px solid rgba(76, 175, 80, 0.3)',
+        borderRadius: '10px',
+        padding: '8px 12px',
+        color: 'white',
+        fontSize: '14px',
+        cursor: 'pointer',
+        transition: 'all 0.3s ease',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '5px'
+    },
+    
     logoutButton: {
         background: 'rgba(255, 255, 255, 0.2)',
         border: '1px solid rgba(255, 255, 255, 0.3)',
@@ -420,5 +578,81 @@ const styles = {
         maxWidth: '1400px',
         margin: '0 auto',
         padding: '0 30px 40px'
+    },
+
+    consentBanner: {
+        background: 'rgba(76, 175, 80, 0.1)',
+        border: '1px solid rgba(76, 175, 80, 0.3)',
+        borderRadius: '15px',
+        margin: '20px 30px',
+        padding: '20px',
+        backdropFilter: 'blur(10px)',
+        animation: 'fadeIn 0.5s ease-out'
+    },
+    consentBannerContent: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '15px',
+        maxWidth: '1400px',
+        margin: '0 auto'
+    },
+    consentBannerIcon: {
+        fontSize: '24px',
+        background: 'rgba(76, 175, 80, 0.2)',
+        borderRadius: '50%',
+        width: '40px',
+        height: '40px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    consentBannerText: {
+        flex: 1
+    },
+    consentBannerTitle: {
+        color: 'white',
+        fontSize: '16px',
+        fontWeight: '600',
+        margin: '0 0 5px 0'
+    },
+    consentBannerDescription: {
+        color: 'rgba(255, 255, 255, 0.8)',
+        fontSize: '14px',
+        margin: 0
+    },
+    consentBannerActions: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+    },
+    consentBannerButton: {
+        background: 'rgba(76, 175, 80, 0.9)',
+        color: 'white',
+        border: 'none',
+        borderRadius: '10px',
+        padding: '8px 16px',
+        fontSize: '14px',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'all 0.3s ease'
+    },
+    consentBannerDismiss: {
+        background: 'rgba(255, 255, 255, 0.1)',
+        color: 'rgba(255, 255, 255, 0.7)',
+        border: 'none',
+        borderRadius: '50%',
+        width: '30px',
+        height: '30px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        fontSize: '14px',
+        transition: 'all 0.3s ease'
+    },
+    loadingSubtext: {
+        color: 'rgba(255, 255, 255, 0.6)',
+        fontSize: '12px',
+        margin: '10px 0 0 0'
     }
 };

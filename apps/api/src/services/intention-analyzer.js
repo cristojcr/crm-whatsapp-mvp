@@ -2,10 +2,12 @@
 // INTENTION ANALYZER - ANÁLISE DE INTENÇÃO COM IA
 // ===============================================
 
+const fetch = require('node-fetch');
+
 // ===============================================
 // CONFIGURAÇÃO DEEPSEEK PARA ANÁLISE DE INTENÇÃO
 // ===============================================
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'example_key';
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 
 // ===============================================
@@ -13,36 +15,63 @@ const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 // ===============================================
 const INTENTION_TYPES = {
   greeting: 'Saudação ou cumprimento inicial',
-  scheduling: 'Agendamento de consultas, horários, marcação',
-  sales: 'Interesse em compras, produtos, serviços, vendas',
-  support: 'Suporte técnico, problemas, dúvidas',
-  information: 'Pedido de informações gerais',
-  complaint: 'Reclamações, problemas, insatisfação',
-  pricing: 'Perguntas sobre preços, valores, custos',
-  other: 'Outras intenções não categorizadas',
-  reschedule: 'Reagendamento de consultas existentes',
-  cancellation: 'Cancelamento de agendamentos',
-  availability: 'Consulta de disponibilidade de horários',
-  confirmation: 'Confirmação de agendamentos propostos'
+  scheduling: 'Solicitação de agendamento de consulta ou serviço',
+  sales: 'Interesse em comprar produto ou serviço',
+  support: 'Pedido de ajuda ou suporte técnico',
+  information: 'Solicitação de informações gerais',
+  complaint: 'Reclamação ou feedback negativo',
+  pricing: 'Pergunta sobre preços ou valores',
+  reschedule: 'Solicitação para remarcar agendamento existente',
+  cancellation: 'Solicitação para cancelar agendamento',
+  availability: 'Consulta sobre disponibilidade de horários',
+  confirmation: 'Confirmação de agendamento ou informação',
+  other: 'Outras intenções não categorizadas'
 };
 
 // ===============================================
-// PALAVRAS-CHAVE POR INTENÇÃO (FALLBACK)
+// PALAVRAS-CHAVE PARA ANÁLISE FALLBACK
 // ===============================================
-const INTENTION_KEYWORDS = {
-  greeting: ['oi', 'olá', 'hello', 'bom dia', 'boa tarde', 'boa noite', 'opa', 'eae'],
-  scheduling: ['agendar', 'agendamento', 'marcar', 'consulta', 'horário', 'disponível', 'agenda', 'data', 'quando'],
-  sales: ['comprar', 'vender', 'produto', 'serviço', 'interessado', 'quero', 'preciso', 'venda'],
-  support: ['ajuda', 'problema', 'suporte', 'erro', 'bug', 'não funciona', 'dúvida', 'como'],
-  information: ['informação', 'info', 'saber', 'conhecer', 'detalhes', 'explicar', 'o que é'],
-  complaint: ['reclamação', 'insatisfeito', 'ruim', 'péssimo', 'problema', 'cancelar', 'reembolso'],
-  pricing: ['preço', 'valor', 'custa', 'quanto', 'custo', 'tabela', 'orçamento', 'investimento'],
-  reschedule: ['reagendar', 'remarcar', 'mudar horário', 'trocar data', 'transferir', 'mudar agendamento', 'alterar horário', 'preciso mudar', 'quero remarcar', 'posso mudar', 'trocar horário', 'alterar consulta'],
-  cancellation: ['cancelar', 'desmarcar', 'não posso ir', 'não vou conseguir', 'quero cancelar', 'preciso cancelar', 'desmarcar consulta', 'não posso mais', 'cancelar agendamento', 'não vai dar'],
-  availability: ['horários disponíveis', 'que horas tem', 'horários livres', 'disponibilidade', 'quando tem vaga', 'horários vagos', 'agenda livre'],
-  confirmation: ['confirmar', 'ok pode ser', 'aceito', 'tá bom', 'perfeito', 'confirmo', 'pode marcar', 'fecha então', 'vou sim'],
+const KEYWORDS = {
+  greeting: ['oi', 'olá', 'boa tarde', 'bom dia', 'boa noite', 'e aí', 'oi tudo bem', 'como vai'],
+  scheduling: ['agendar', 'marcar consulta', 'consulta', 'agendamento', 'horário', 'marcar', 'disponível', 'vaga', 'atendimento'],
+  sales: ['comprar', 'preço', 'valor', 'quanto custa', 'orçamento', 'proposta', 'venda', 'produto'],
+  support: ['ajuda', 'problema', 'erro', 'não funciona', 'suporte', 'dúvida', 'como fazer'],
+  information: ['informação', 'saber mais', 'detalhes', 'explicar', 'como funciona', 'que é'],
+  complaint: ['reclamação', 'problema', 'insatisfeito', 'ruim', 'péssimo', 'reclamar'],
+  pricing: ['preço', 'valor', 'quanto custa', 'tabela', 'valores', 'custo'],
+  reschedule: ['remarcar', 'mudar horário', 'trocar data', 'reagendar', 'alterar'],
+  cancellation: ['cancelar', 'desmarcar', 'não vou', 'não posso', 'cancelamento'],
+  availability: ['disponível', 'horários', 'quando tem', 'que horas', 'agenda', 'livre', 'vago'],
+  confirmation: ['confirmar', 'ok', 'sim', 'perfeito', 'tá bom', 'aceito', 'concordo'],
   other: []
 };
+
+// ===============================================
+// FUNÇÃO: LIMPAR RESPOSTA JSON DA IA
+// ===============================================
+function cleanJsonResponse(response) {
+  if (!response) return response;
+  
+  // Remove backticks markdown se existirem
+  let cleaned = response.trim();
+  
+  // Remove ```json do início
+  if (cleaned.startsWith('```json')) {
+    cleaned = cleaned.substring(7);
+  }
+  
+  // Remove ``` do início se existir
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.substring(3);
+  }
+  
+  // Remove ``` do final se existir
+  if (cleaned.endsWith('```')) {
+    cleaned = cleaned.substring(0, cleaned.length - 3);
+  }
+  
+  return cleaned.trim();
+}
 
 // ===============================================
 // FUNÇÃO PRINCIPAL: ANÁLISE DE INTENÇÃO COM IA
@@ -52,8 +81,9 @@ async function analyze(messageContent, context = {}) {
     console.log('🧠 Analisando intenção com DeepSeek:', messageContent);
 
     // Verificar se API key está disponível
-    if (!DEEPSEEK_API_KEY || DEEPSEEK_API_KEY.includes('exemplo')) {
-      throw new Error('API key não configurada');
+    if (!DEEPSEEK_API_KEY || DEEPSEEK_API_KEY.includes('exemplo') || DEEPSEEK_API_KEY.includes('example')) {
+      console.log('⚠️ API DeepSeek não configurada, usando análise fallback');
+      return await analyzeFallback(messageContent, context);
     }
 
     // Construir prompt contextualizado
@@ -71,7 +101,7 @@ async function analyze(messageContent, context = {}) {
         messages: [
           {
             role: 'system',
-            content: 'Você é um especialista em análise de intenções para CRM. Analise a mensagem e retorne APENAS um JSON válido.'
+            content: 'Você é um especialista em análise de intenções para CRM. Analise a mensagem e retorne APENAS um JSON válido sem markdown.'
           },
           {
             role: 'user',
@@ -94,8 +124,12 @@ async function analyze(messageContent, context = {}) {
       throw new Error('Resposta vazia da API');
     }
 
+    // 🔧 CORREÇÃO: Limpar backticks antes do JSON.parse
+    const cleanedResult = cleanJsonResponse(result);
+    console.log('🧹 Resposta limpa:', cleanedResult);
+
     // Parse do resultado JSON
-    const parsed = JSON.parse(result.trim());
+    const parsed = JSON.parse(cleanedResult);
     
     // Validar estrutura
     if (!parsed.intention || !parsed.confidence) {
@@ -114,8 +148,129 @@ async function analyze(messageContent, context = {}) {
 
   } catch (error) {
     console.error('❌ Erro na análise de intenção:', error.message);
-    throw error;
+    console.log('🔄 Tentando análise fallback...');
+    return await analyzeFallback(messageContent, context);
   }
+}
+
+// ===============================================
+// FUNÇÃO: ANÁLISE FALLBACK (SEM IA)
+// ===============================================
+async function analyzeFallback(messageContent, context = {}) {
+  try {
+    console.log('🔍 Usando análise fallback por palavras-chave');
+    
+    const message = messageContent.toLowerCase();
+    let bestMatch = 'other';
+    let confidence = 0.1;
+    
+    // Buscar a melhor correspondência nas palavras-chave
+    for (const [intention, keywords] of Object.entries(KEYWORDS)) {
+      for (const keyword of keywords) {
+        if (message.includes(keyword.toLowerCase())) {
+          bestMatch = intention;
+          confidence = 0.8;
+          break;
+        }
+      }
+      if (confidence > 0.1) break;
+    }
+    
+    console.log(`✅ Intenção detectada (fallback): ${bestMatch} (${confidence})`);
+    
+    return {
+      intention: bestMatch,
+      confidence: confidence,
+      reasoning: 'Análise por palavras-chave (fallback)',
+      provider: 'fallback',
+      timestamp: new Date().toISOString()
+    };
+    
+  } catch (error) {
+    console.error('❌ Erro na análise fallback:', error.message);
+    
+    // Retorno padrão em caso de erro total
+    return {
+      intention: 'other',
+      confidence: 0.1,
+      reasoning: 'Erro na análise, retornando padrão',
+      provider: 'default',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    };
+  }
+}
+
+// ===============================================
+// FUNÇÃO: ANÁLISE HÍBRIDA
+// ===============================================
+async function analyzeHybrid(messageContent, context = {}) {
+  try {
+    // Tentar análise com IA primeiro
+    const aiResult = await analyze(messageContent, context);
+    
+    // Se confiança baixa, usar fallback como backup
+    if (aiResult.confidence < 0.5) {
+      const fallbackResult = await analyzeFallback(messageContent, context);
+      
+      // Retornar o melhor resultado
+      return aiResult.confidence > fallbackResult.confidence ? aiResult : fallbackResult;
+    }
+    
+    return aiResult;
+    
+  } catch (error) {
+    console.error('❌ Erro na análise híbrida:', error.message);
+    return await analyzeFallback(messageContent, context);
+  }
+}
+
+// ===============================================
+// FUNÇÃO: EXTRAIR DATA E HORA DA MENSAGEM
+// ===============================================
+function extractDateTime(messageContent) {
+  const message = messageContent.toLowerCase();
+  const now = new Date();
+  
+  // Padrões para detectar datas
+  const patterns = {
+    tomorrow: /amanh[ãa]|tomorrow/i,
+    today: /hoje|today/i,
+    time: /(\d{1,2})[h:]?(\d{0,2})/g
+  };
+  
+  let suggestedDate = null;
+  let suggestedTime = null;
+  
+  // Detectar data
+  if (patterns.tomorrow.test(message)) {
+    suggestedDate = new Date(now);
+    suggestedDate.setDate(now.getDate() + 1);
+  } else if (patterns.today.test(message)) {
+    suggestedDate = new Date(now);
+  }
+  
+  // Detectar horário
+  const timeMatch = message.match(patterns.time);
+  if (timeMatch && timeMatch.length > 0) {
+    const timeStr = timeMatch[0];
+    const timeDigits = timeStr.match(/\d+/g);
+    if (timeDigits && timeDigits.length > 0) {
+      const hour = parseInt(timeDigits[0]);
+      const minute = timeDigits.length > 1 ? parseInt(timeDigits[1]) : 0;
+      
+      if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+        suggestedTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      }
+    }
+  }
+  
+  return {
+    suggestedDate: suggestedDate ? suggestedDate.toISOString().split('T')[0] : null,
+    suggestedTime: suggestedTime,
+    hasDateReference: suggestedDate !== null,
+    hasTimeReference: suggestedTime !== null
+  };
 }
 
 // ===============================================
@@ -135,182 +290,55 @@ TIPOS DE INTENÇÃO DISPONÍVEIS:
   });
 
   // Adicionar contexto se disponível
-  if (context.userProfile) {
-    prompt += `\nCONTEXTO DO USUÁRIO: ${context.userProfile.business_name || 'Negócio'}\n`;
-  }
-
-  if (context.history && context.history.length > 0) {
-    prompt += `\nHISTÓRICO RECENTE:\n`;
-    context.history.slice(0, 3).forEach(msg => {
-      prompt += `- ${msg.sender_type}: "${msg.content}"\n`;
-    });
-  }
-
-  if (context.products && context.products.length > 0) {
-    prompt += `\nPRODUTOS/SERVIÇOS DISPONÍVEIS:\n`;
-    context.products.slice(0, 5).forEach(product => {
-      prompt += `- ${product.name}: ${product.description || 'N/A'}\n`;
+  if (context.previousMessages && context.previousMessages.length > 0) {
+    prompt += `\nCONTEXTO ANTERIOR:\n`;
+    context.previousMessages.forEach((msg, index) => {
+      prompt += `${index + 1}. ${msg}\n`;
     });
   }
 
   prompt += `
-RESPONDA APENAS COM UM JSON VÁLIDO no formato:
+RETORNE APENAS UM JSON NO SEGUINTE FORMATO (sem markdown, sem backticks):
 {
-  "intention": "tipo_da_intenção",
+  "intention": "tipo_de_intencao",
   "confidence": 0.95,
-  "reasoning": "breve explicação"
+  "reasoning": "explicacao_breve"
 }
 
-IMPORTANTE: Use APENAS os tipos de intenção listados acima.`;
+IMPORTANTE: Retorne APENAS o JSON, sem texto adicional, sem markdown, sem \`\`\`json.`;
 
   return prompt;
 }
 
 // ===============================================
-// FUNÇÃO FALLBACK: ANÁLISE POR PALAVRAS-CHAVE
+// FUNÇÃO: ANÁLISE COM PREFERÊNCIAS PROFISSIONAIS
 // ===============================================
-function analyzeFallback(messageContent) {
+async function analyzeWithProfessionalPreference(message, contactId, companyId) {
   try {
-    console.log('🔍 Análise por palavras-chave:', messageContent);
+    console.log('🔍 Analisando com preferências profissionais...');
     
-    const content = messageContent.toLowerCase();
-    let bestMatch = { intention: 'other', score: 0 };
-
-    // Verificar cada tipo de intenção
-    Object.entries(INTENTION_KEYWORDS).forEach(([intention, keywords]) => {
-      let score = 0;
-      
-      keywords.forEach(keyword => {
-        if (content.includes(keyword.toLowerCase())) {
-          score += 1;
-        }
-      });
-
-      if (score > bestMatch.score) {
-        bestMatch = { intention, score };
-      }
-    });
-
-    // Calcular confiança baseada no score
-    const confidence = Math.min(0.8, 0.3 + (bestMatch.score * 0.1));
-
-    console.log(`✅ Fallback: ${bestMatch.intention} (confiança: ${confidence.toFixed(2)})`);
-
-    return {
-      intention: bestMatch.intention,
-      confidence: parseFloat(confidence.toFixed(2)),
-      reasoning: `Análise por palavras-chave: ${bestMatch.score} matches`,
-      provider: 'fallback',
-      timestamp: new Date().toISOString()
-    };
-
-  } catch (error) {
-    console.error('❌ Erro no fallback:', error.message);
+    // Fazer análise básica primeiro
+    const basicAnalysis = await analyze(message);
     
-    // Retorno de segurança
-    return {
-      intention: 'other',
-      confidence: 0.5,
-      reasoning: 'Erro na análise - classificação padrão',
-      provider: 'error',
-      timestamp: new Date().toISOString()
-    };
-  }
-}
-
-// ===============================================
-// FUNÇÃO: ANÁLISE HÍBRIDA (IA + FALLBACK)
-// ===============================================
-async function analyzeHybrid(messageContent, context = {}) {
-  try {
-    // Tentar análise com IA primeiro
-    const aiResult = await analyze(messageContent, context);
-    
-    // Se confiança for muito baixa, complementar com fallback
-    if (aiResult.confidence < 0.7) {
-      const fallbackResult = analyzeFallback(messageContent);
-      
-      // Se fallback tem maior confiança, usar fallback
-      if (fallbackResult.confidence > aiResult.confidence) {
-        return {
-          ...fallbackResult,
-          reasoning: `Híbrido: Fallback (${fallbackResult.confidence}) > IA (${aiResult.confidence})`
-        };
-      }
+    // Se não é agendamento, retornar análise básica
+    if (basicAnalysis.intention !== 'scheduling') {
+      return basicAnalysis;
     }
     
-    return aiResult;
-
-  } catch (error) {
-    console.log('⚠️ IA falhou, usando fallback:', error.message);
-    return analyzeFallback(messageContent);
-  }
-}
-
-// ===============================================
-// FUNÇÃO: DETECTAR MENÇÃO A SERVIÇOS
-// ===============================================
-function detectServiceMention(message, availableServices = []) {
-  try {
-    const messageLower = message.toLowerCase();
+    // Extrair informações de data/hora
+    const dateTime = extractDateTime(message);
     
-    for (const service of availableServices) {
-      const serviceName = service.name.toLowerCase();
-      const words = serviceName.split(' ');
-      
-      // Verificar se todas as palavras do serviço estão na mensagem
-      const allWordsFound = words.every(word => 
-        messageLower.includes(word) || 
-        messageLower.includes(word.substring(0, word.length - 1)) // plural/singular
-      );
-      
-      if (allWordsFound) {
-        return {
-          service: service,
-          confidence: 0.9
-        };
-      }
-    }
-    
-    return null;
-    
-  } catch (error) {
-    console.error('❌ Erro ao detectar serviço:', error);
-    return null;
-  }
-}
-
-// ===============================================
-// FUNÇÃO: EXTRAIR INFORMAÇÕES DE DATA/HORA
-// ===============================================
-function extractDateTime(message) {
-  try {
-    const patterns = {
-      // Dias da semana
-      weekdays: /\b(segunda|terça|quarta|quinta|sexta|sábado|domingo|seg|ter|qua|qui|sex|sáb|dom)\b/gi,
-      // Períodos do dia  
-      periods: /\b(manhã|tarde|noite|manha|de manhã|de tarde|a tarde|a noite)\b/gi,
-      // Horários específicos
-      times: /\b(\d{1,2}):?(\d{0,2})\s?(h|hs|horas?)?\b/gi,
-      // Datas relativas
-      relative: /\b(hoje|amanhã|depois de amanha|na proxima|próxima|semana que vem)\b/gi
+    // Retornar análise enriquecida
+    return {
+      ...basicAnalysis,
+      dateTime: dateTime,
+      professionalPreference: null, // Implementar busca de preferências depois
+      contactId: contactId,
+      companyId: companyId
     };
-
-    const extracted = {};
-
-    // Extrair padrões
-    Object.keys(patterns).forEach(pattern => {
-      const matches = message.match(patterns[pattern]);
-      if (matches) {
-        extracted[pattern] = matches;
-      }
-    });
-
-    return extracted;
     
   } catch (error) {
-    console.error('❌ Erro ao extrair data/hora:', error);
-    return {};
+    console.error('❌ Erro na análise com preferências:', error.message);
   }
 }
 
@@ -321,8 +349,8 @@ module.exports = {
   analyze,
   analyzeFallback,
   analyzeHybrid,
-  detectServiceMention,
+  analyzeWithProfessionalPreference,
   extractDateTime,
   INTENTION_TYPES,
-  INTENTION_KEYWORDS
+  KEYWORDS
 };

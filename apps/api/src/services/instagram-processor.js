@@ -8,18 +8,62 @@ class InstagramProcessor {
     }
 
     // Buscar configuração do Instagram por usuário
+    // Buscar configuração do Instagram por usuário
     async getUserInstagramConfig(userId) {
+        console.log('🔍 getUserInstagramConfig: Buscando para userId:', userId);
+        console.log('🔍 Length do userId:', userId.length);
+        console.log('🔍 Tipo do userId:', typeof userId);
+        console.log('🔍 userId em JSON:', JSON.stringify(userId));
+        
+        // TESTE 1: Buscar qualquer registro da tabela
+        const { data: allRecords, error: allError } = await supabase
+            .from('user_channels')
+            .select('*')
+            .limit(5);
+        console.log('🧪 TESTE: Todos os registros (5):', allRecords?.length);
+        console.log('🧪 TESTE: Erro ao buscar todos:', allError);
+        
+        // TESTE 2: Buscar especificamente
+        // TESTE 2: Buscar especificamente
+        console.log('🧪 TESTE 2.1: Buscar só pelo user_id (sem filtros)');
+        const { data: test1, error: error1 } = await supabase
+            .from('user_channels')
+            .select('*')
+            .eq('user_id', userId);
+        console.log('📊 TESTE 2.1 - Registros encontrados:', test1?.length);
+        console.log('📊 TESTE 2.1 - Dados:', test1);
+
+        console.log('🧪 TESTE 2.2: Buscar só por instagram (qualquer usuário)');
+        const { data: test2, error: error2 } = await supabase
+            .from('user_channels')
+            .select('*')
+            .eq('channel_type', 'instagram');
+        console.log('📊 TESTE 2.2 - Registros instagram:', test2?.length);
+        console.log('📊 TESTE 2.2 - Dados:', test2);
+
+        console.log('🧪 TESTE 2.3: Ver os 5 primeiros registros completos');
+        console.log('📊 TODOS OS 5 REGISTROS:', JSON.stringify(allRecords, null, 2));
+
+        // TESTE 3: Buscar com filtros originais
         const { data: channel, error } = await supabase
             .from('user_channels')
-            .select('channel_config')
+            .select('*')
             .eq('user_id', userId)
             .eq('channel_type', 'instagram')
-            .eq('is_active', true)
-            .single();
-
-        if (error) throw new Error('Instagram não configurado para este usuário');
+            // .eq('is_active', true);
+                
+        if (error) {
+            console.log('❌ Erro detalhado:', JSON.stringify(error, null, 2));
+            throw new Error('Instagram não configurado para este usuário');
+        }
         
-        return channel.channel_config;
+        if (!channel || channel.length === 0) {
+            console.log('❌ Nenhum registro encontrado');
+            throw new Error('Instagram não configurado para este usuário');
+        }
+        
+        console.log('✅ Configuração encontrada:', channel[0].channel_config);
+        return channel[0].channel_config;
     }
 
     // Processar mensagens recebidas do Instagram (multi-tenant)
@@ -194,6 +238,7 @@ class InstagramProcessor {
     // Validar configuração do Instagram
     async validateConfig(userId) {
         try {
+            
             const config = await this.getUserInstagramConfig(userId);
             
             // Testar se o token é válido

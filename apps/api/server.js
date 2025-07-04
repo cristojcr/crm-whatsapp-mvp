@@ -13,7 +13,7 @@ console.log('URL Supabase:', process.env.NEXT_PUBLIC_SUPABASE_URL || 'MISSING');
 console.log('ANON Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'OK' : 'MISSING');
 console.log('SERVICE Key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'OK' : 'MISSING');
 console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'OK' : 'MISSING');
-
+console.log('🔧 ARQUIVO PARTNERS.JS CARREGADO COM SUCESSO!');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -22,6 +22,8 @@ const rateLimit = require('express-rate-limit');
 
 // Importar Supabase Client
 const supabase = require('./src/config/supabase');
+// Importar Compliance Service para jobs automáticos (ID 2.15)
+const ComplianceService = require('./src/services/compliance-service');
 
 // Importar rotas
 const authRoutes = require('./src/routes/auth');
@@ -37,7 +39,24 @@ const telegramRoutes = require('./src/routes/telegram');
 const channelRoutes = require('./src/routes/channels');
 const telegramSetupRoutes = require('./src/routes/telegram-setup');
 const instagramSetupRoutes = require('./src/routes/instagram-setup');
+const instagramAuthRoutes = require('./src/routes/instagram-auth');
+const whiteLabelRoutes = require('./src/routes/white-label');
+const pricingRoutes = require('./src/routes/pricing');
+const tenantMiddleware = require('./src/middleware/tenant-middleware');
+// Rotas de compliance e templates (ID 2.15)
+const templatesRoutes = require('./src/routes/templates');
+// const complianceRoutes = require('./src/routes/compliance');
+const dataProtectionRoutes = require('./src/routes/data-protection');
+const DataProtectionMiddleware = require('./src/middleware/data-protection-middleware');
+// Rotas de profissionais (NOVA)
+const professionalsRoutes = require('./src/routes/professionals');
 console.log('🛍️ Product routes carregadas:', typeof productRoutes);
+console.log('🔍 DEBUGANDO IMPORTS:');
+console.log('📸 Instagram routes:', typeof instagramRoutes);
+console.log('🤖 Telegram routes:', typeof telegramRoutes);
+console.log('📱 Channel routes:', typeof channelRoutes);
+console.log('💡 authRoutes:', typeof authRoutes);
+console.log('👥 userRoutes:', typeof userRoutes);
 // Novas rotas do Motor de Agenda (ID 2.9)                    
 const appointmentsRoutes = require('./src/routes/appointments');
 const servicesRoutes = require('./src/routes/services');
@@ -94,6 +113,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
+
 // Rate limiting inteligente para produção e desenvolvimento
 app.set('trust proxy', 1); // Confia no primeiro proxy (essencial para o Railway)
 
@@ -113,6 +133,7 @@ app.use(limiter);
 
 // Middleware opcional de auth para todas as rotas
 app.use(optionalAuth);
+app.use(tenantMiddleware.resolveTenant);
 
 // ============================================
 // ROTAS PRINCIPAIS
@@ -187,6 +208,8 @@ app.get('/health', async (req, res) => {
 
 // Servir arquivos estáticos
 app.use(express.static('public'));
+
+
 
 // Rota para dashboard de notificações
 app.get('/notifications-dashboard', (req, res) => {
@@ -331,8 +354,16 @@ app.use('/api/auth', authRoutes);
 // Rotas de usuários (protegidas)
 app.use('/api/users', userRoutes);
 
+// Rotas de profissionais (ID 2.17) - PROTEGIDAS
+app.use('/api/professionals', professionalsRoutes);
+// Rotas do Google Calendar Multi-Profissional (ID 2.17.2)
+app.use('/api/calendar', require('./src/routes/calendar'));
+
+// Rotas de subscription (limites de plano) - PROTEGIDAS  
+app.use('/api/subscription', require('./src/routes/subscription'));
+
 // Rotas de contatos
-app.use('/api/contacts', contactsRoutes);
+// app.use('/api/contacts', contactsRoutes);
 
 // Rotas de empresas
 app.use('/api/companies', companiesRoutes);
@@ -348,19 +379,33 @@ app.use('/api/webhook', webhookRoutes);
 // Rotas de produtos
 app.use('/api/products', productRoutes);
 // Rotas multicanal (ID 2.12)
+console.log('🔧 REGISTRANDO ROTAS MULTICANAL...');
+console.log('📸 Registrando /api/instagram...');
 app.use('/api/instagram', instagramRoutes);
+console.log('🤖 Registrando /api/telegram...');
 app.use('/api/telegram', telegramRoutes);
+console.log('📱 Registrando /api/channels...');
 app.use('/api/channels', channelRoutes);
+console.log('✅ ROTAS MULTICANAL REGISTRADAS!');
 app.use('/api/webhook/instagram', instagramRoutes);
 app.use('/api/webhook/telegram', telegramRoutes);
 // Rotas de setup multicanal (ID 2.12)
 app.use('/api/telegram-setup', telegramSetupRoutes);
 app.use('/api/instagram-setup', instagramSetupRoutes);
+
+app.use('/auth/instagram', instagramAuthRoutes);
 // Novas rotas do Motor de Agenda
 app.use('/api/appointments', appointmentsRoutes);
 app.use('/api/services', servicesRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/statistics', statisticsRoutes);
+// Outras rotas...
+
+// Rotas do Sistema de Parcerias (ID 2.13)
+app.use('/api/partners', require('./src/routes/partners'));
+app.use('/api/partner-notifications', require('./src/routes/partner-notifications'));
+app.use('/api/admin/partner-settings', require('./src/routes/admin/partner-settings-backend'));
+app.use('/api/admin/commissions', require('./src/routes/admin/commissions'));
 
 // ==================== ROTAS DE ALERTAS (ID 2.7) ====================
 // Rota para ver alertas
@@ -554,6 +599,16 @@ app.get('/api/test-database', async (req, res) => {
   }
 });
 
+app.use('/api/white-label', whiteLabelRoutes);
+app.use('/api/pricing', pricingRoutes);
+// Rotas de compliance e templates (ID 2.15)
+app.use('/api/templates', templatesRoutes);
+// app.use('/api/compliance', complianceRoutes);
+// Rotas de proteção de dados LGPD/GDPR (ID 2.16)
+app.use(DataProtectionMiddleware.auditMiddleware);
+app.use('/api/data-protection', dataProtectionRoutes);
+const consentFormRoutes = require('./src/routes/consent-form');
+app.use('/api/consent-form', consentFormRoutes);
 // ============================================
 // MIDDLEWARES DE ERRO
 // ============================================
@@ -607,7 +662,20 @@ async function startServer() {
       }
     });
 
-    console.log('✅ Cron job de notificações configurado (a cada 30 minutos)');    
+        // Agendar verificação de janelas expiradas (ID 2.15)
+    // Executa a cada 15 minutos
+    cron.schedule('*/15 * * * *', async () => {
+      console.log('🚨 Executando verificação de compliance...');
+      try {
+        await ComplianceService.checkExpiredWindows();
+        console.log('✅ Verificação de compliance concluída');
+      } catch (error) {
+        console.error('❌ Erro no job de compliance:', error.message);
+      }
+    });
+
+    console.log('✅ Cron job de notificações configurado (a cada 30 minutos)');
+    console.log('✅ Cron job de compliance configurado (a cada 15 minutos)');   
     
     // Iniciar servidor
     app.listen(PORT, () => {
@@ -630,6 +698,7 @@ async function startServer() {
       console.log('🔗 Webhook Telegram: http://localhost:${PORT}/api/webhook/telegram');
       console.log('🔧 Setup Telegram: http://localhost:${PORT}/api/telegram-setup');
       console.log('🔧 Setup Instagram: http://localhost:${PORT}/api/instagram-setup');
+      console.log('📅 Google Calendar: http://localhost:${PORT}/api/calendar');
       console.log(`📅 Iniciado: ${new Date().toLocaleString('pt-BR')}`);
       console.log('🎉 ===================================');
       console.log('');

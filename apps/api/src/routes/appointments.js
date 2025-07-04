@@ -345,4 +345,75 @@ router.get('/metrics', authenticateToken, async (req, res) => {
     }
 });
 
+// GET /api/appointments/stats - Estatísticas reais de appointments
+router.get('/stats', authenticateToken, async (req, res) => {
+  try {
+    console.log('📊 Buscando estatísticas reais de appointments...');
+    
+    // Buscar company_id do usuário
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('company_id')
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!profile) {
+      return res.status(404).json({ error: 'Perfil não encontrado' });
+    }
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+    // Appointments deste mês
+    const { data: thisMonthAppointments, error: thisMonthError } = await supabase
+      .from('appointments')
+      .select('id, created_at')
+      .eq('company_id', profile.company_id)
+      .gte('created_at', new Date(currentYear, currentMonth, 1).toISOString())
+      .lt('created_at', new Date(currentYear, currentMonth + 1, 1).toISOString());
+
+    if (thisMonthError) throw thisMonthError;
+
+    // Appointments do mês passado
+    const { data: lastMonthAppointments, error: lastMonthError } = await supabase
+      .from('appointments')
+      .select('id, created_at')
+      .eq('company_id', profile.company_id)
+      .gte('created_at', new Date(lastMonthYear, lastMonth, 1).toISOString())
+      .lt('created_at', new Date(lastMonthYear, lastMonth + 1, 1).toISOString());
+
+    if (lastMonthError) throw lastMonthError;
+
+    const thisMonthTotal = thisMonthAppointments?.length || 0;
+    const lastMonthTotal = lastMonthAppointments?.length || 0;
+
+    // Calcular crescimento real
+    let growthPercentage = 0;
+    if (lastMonthTotal > 0) {
+      growthPercentage = ((thisMonthTotal - lastMonthTotal) / lastMonthTotal) * 100;
+    } else if (thisMonthTotal > 0) {
+      growthPercentage = 100;
+    }
+
+    console.log(`📊 Estatísticas reais: ${thisMonthTotal} appointments este mês, ${lastMonthTotal} mês passado`);
+
+    res.json({
+      total_this_month: thisMonthTotal,
+      total_last_month: lastMonthTotal,
+      growth_percentage: Math.round(growthPercentage * 100) / 100,
+      company_id: profile.company_id
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar estatísticas de appointments:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: error.message 
+    });
+  }
+});
+
 module.exports = router;

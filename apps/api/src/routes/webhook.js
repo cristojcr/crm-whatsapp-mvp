@@ -1,7 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
-
 const router = express.Router();
 
 // ===============================================
@@ -16,6 +15,17 @@ const supabase = createClient(
 // ===============================================
 // IMPORTAR PROCESSADOR DE IA
 // ===============================================
+// ===============================================
+// IMPORTAR COMPLIANCE SERVICE (ID 2.15)
+// ===============================================
+let ComplianceService;
+try {
+  ComplianceService = require('../services/compliance-service');
+  console.log('✅ Compliance Service carregado com sucesso');
+} catch (error) {
+  console.log('❌ Compliance Service não encontrado - funcionando sem compliance');
+  ComplianceService = null;
+}
 
 let messageProcessor;
 try {
@@ -321,6 +331,25 @@ async function processSingleMessage(message, phoneNumberId) {
     }
     
     console.log('✅ Mensagem salva:', savedMessage.id);
+
+        // ===============================================
+    // 🚨 COMPLIANCE: Registrar janela 24h (ID 2.15)
+    // ===============================================
+    if (ComplianceService && savedMessage.id) {
+      try {
+        await ComplianceService.registerCustomerMessage(
+          conversation.id,
+          'whatsapp',
+          senderPhone,
+          conversation.user_id
+        );
+        console.log(`✅ Compliance: Janela 24h registrada para ${senderPhone}`);
+      } catch (complianceError) {
+        console.error('❌ Erro no compliance (não crítico):', complianceError);
+      }
+    } else {
+      console.log('🚨 [FUTURO] Compliance não disponível - funcionando sem compliance');
+    }
     
     // ===============================================
     // 🤖 PROCESSAMENTO DE IA - NOVO!
@@ -753,6 +782,25 @@ async function processSingleMessageMultiTenant(message, phoneNumberId, userId) {
         }
         
         console.log(`✅ Mensagem multi-tenant salva: ${savedMessage.id} para usuário: ${userId}`);
+
+                // ===============================================
+        // 🚨 COMPLIANCE MULTI-TENANT: Registrar janela 24h (ID 2.15)
+        // ===============================================
+        if (ComplianceService && savedMessage.id) {
+            try {
+                await ComplianceService.registerCustomerMessage(
+                    conversation.id,
+                    'whatsapp',
+                    senderPhone,
+                    userId
+                );
+                console.log(`✅ Compliance Multi-Tenant: Janela 24h registrada para ${senderPhone} (usuário: ${userId})`);
+            } catch (complianceError) {
+                console.error('❌ Erro no compliance multi-tenant (não crítico):', complianceError);
+            }
+        } else {
+            console.log('🚨 [FUTURO] Compliance multi-tenant não disponível - funcionando sem compliance');
+        }
         
         // Processamento IA (mesmo código da função original)
         if (messageProcessor && savedMessage.id) {

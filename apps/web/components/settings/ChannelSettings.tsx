@@ -19,6 +19,7 @@ const ChannelSettings = ({ initialChannels, onUpdate, userId, userPlan = 'premiu
     const [saving, setSaving] = useState(false);
     const [selectedChannel, setSelectedChannel] = useState(null);
     const [config, setConfig] = useState({});
+    const [connectingInstagram, setConnectingInstagram] = useState(false);
 
 // ✅ NOVO useEffect para sincronizar com o pai
     useEffect(() => {
@@ -42,6 +43,8 @@ const ChannelSettings = ({ initialChannels, onUpdate, userId, userPlan = 'premiu
     const handleSave = async () => {
         if (!selectedChannel) return;
         setSaving(true);
+        
+        // Salvar no Supabase (código existente)
         const { error } = await supabase
             .from('user_channels')
             .update({ channel_config: config, updated_at: new Date().toISOString() })
@@ -50,6 +53,31 @@ const ChannelSettings = ({ initialChannels, onUpdate, userId, userPlan = 'premiu
         if (error) {
             alert("Erro ao salvar: " + error.message);
         } else {
+            // 🆕 CONFIGURAR WEBHOOK AUTOMATICAMENTE
+            if (selectedChannel.channel_type === 'telegram' && config.bot_token) {
+                try {
+                    console.log('🔗 Configurando webhook Telegram...');
+                    
+                    const webhookResponse = await fetch('http://localhost:3001/api/telegram/setup-webhook', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            bot_token: config.bot_token,
+                            user_id: userId
+                        })
+                    });
+
+                    if (webhookResponse.ok) {
+                        console.log('✅ Webhook configurado com sucesso!');
+                    } else {
+                        console.warn('⚠️ Erro configurando webhook');
+                    }
+                } catch (error) {
+                    console.error('❌ Erro no webhook:', error);
+                }
+            }
+            
+            // Restante do código existente...
             const updatedChannels = channels.map(ch => 
                 ch.id === selectedChannel.id ? { ...ch, channel_config: config } : ch
             );
@@ -83,6 +111,63 @@ const ChannelSettings = ({ initialChannels, onUpdate, userId, userPlan = 'premiu
             successEl.style.display = 'block';
             setTimeout(() => { successEl.style.display = 'none'; }, 2000);
         }
+    };
+    // Função para conectar Instagram automaticamente
+    const handleInstagramConnect = () => {
+        setConnectingInstagram(true);
+        
+        const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?` +
+            `client_id=${process.env.NEXT_PUBLIC_FACEBOOK_APP_ID}&` +
+            `redirect_uri=${encodeURIComponent('http://localhost:3002/auth/instagram/callback')}&` +
+            `scope=instagram_basic,pages_read_engagement,pages_manage_metadata&` +
+            `response_type=code&` +
+            `state=${userId}`;
+        
+        const popup = window.open(
+            authUrl,
+            'instagram-auth',
+            'width=500,height=600,scrollbars=yes,resizable=yes'
+        );
+        
+        // Listener para o retorno do popup
+        const messageListener = (event) => {
+            if (event.data.type === 'instagram_auth_success') {
+                setConnectingInstagram(false);
+                
+                // Atualizar configuração com dados recebidos
+                setConfig(prev => ({
+                    ...prev,
+                    instagram_user_id: event.data.data.user_id,
+                    username: event.data.data.username,
+                    connected_via_oauth: true
+                }));
+                
+                // Atualizar lista de canais
+                if (onUpdate) {
+                    const updatedChannels = channels.map(ch =>
+                        ch.id === selectedChannel.id 
+                            ? { ...ch, is_active: true, channel_config: config }
+                            : ch
+                    );
+                    onUpdate(updatedChannels);
+                }
+                
+                showSuccessAnimation();
+                popup.close();
+                window.removeEventListener('message', messageListener);
+            }
+        };
+        
+        window.addEventListener('message', messageListener);
+        
+        // Timeout para fechar popup se demorar muito
+        setTimeout(() => {
+            if (popup && !popup.closed) {
+                popup.close();
+                setConnectingInstagram(false);
+            }
+            window.removeEventListener('message', messageListener);
+        }, 300000); // 5 minutos
     };
     
     // Nomes e Cores para cada canal
@@ -154,38 +239,69 @@ const ChannelSettings = ({ initialChannels, onUpdate, userId, userPlan = 'premiu
             case 'instagram':
                 return (
                     <>
-                        <div style={styles.fieldContainer}>
-                            <label style={styles.label}>Business Account ID</label>
-                            <input 
-                                style={styles.input} 
-                                type="text" 
-                                name="business_account_id" 
-                                value={config.business_account_id || ''} 
-                                onChange={handleConfigChange} 
-                                placeholder="Ex: 17841405793..."
-                            />
+                        {/* Botão de conexão automática */}
+                        <div style={styles.autoConnectSection}>
+                            <h4 style={styles.autoConnectTitle}>🚀 Conexão Automática (Recomendado)</h4>
+                            <button
+                                onClick={handleInstagramConnect}
+                                disabled={connectingInstagram}
+                                style={{
+                                    ...styles.connectButton,
+                                    ...(connectingInstagram ? styles.connectButtonLoading : {})
+                                }}
+                            >
+                                {connectingInstagram ? (
+                                    <>
+                                        <div style={styles.spinner}></div>
+                                        Conectando...
+                                    </>
+                                ) : (
+                                    <>📸 Conectar Instagram</>
+                                )}
+                            </button>
+                            <p style={styles.helpText}>
+                                Clique para autorizar via Facebook e conectar automaticamente.
+                            </p>
                         </div>
-                        <div style={styles.fieldContainer}>
-                            <label style={styles.label}>Access Token</label>
-                            <input 
-                                style={styles.input} 
-                                type="password" 
-                                name="access_token" 
-                                value={config.access_token || ''} 
-                                onChange={handleConfigChange} 
-                                placeholder="Token do Instagram Business API"
-                            />
-                        </div>
-                         <div style={styles.fieldContainer}>
-                            <label style={styles.label}>🔗 Webhook URL (Somente Leitura)</label>
-                            <input 
-                                style={styles.webhookInput} 
-                                type="text" 
-                                value={`https://api.seucrm.com/api/webhook/instagram/${userId}`} 
-                                readOnly
-                            />
-                            <p style={styles.helpText}>Configure esta URL no seu App do Facebook.</p>
-                        </div>
+
+                        {/* Configuração manual (recolhida) */}
+                        <details style={styles.manualConfig}>
+                            <summary style={styles.manualSummary}>⚙️ Configuração Manual (Avançado)</summary>
+                            <div style={styles.manualFields}>
+                                <div style={styles.fieldContainer}>
+                                    <label style={styles.label}>Business Account ID</label>
+                                    <input 
+                                        style={styles.input} 
+                                        type="text" 
+                                        name="business_account_id" 
+                                        value={config.business_account_id || ''} 
+                                        onChange={handleConfigChange} 
+                                        placeholder="Ex: 17841405793..."
+                                    />
+                                </div>
+                                <div style={styles.fieldContainer}>
+                                    <label style={styles.label}>Access Token</label>
+                                    <input 
+                                        style={styles.input} 
+                                        type="password" 
+                                        name="access_token" 
+                                        value={config.access_token || ''} 
+                                        onChange={handleConfigChange} 
+                                        placeholder="Token do Instagram Business API"
+                                    />
+                                </div>
+                                <div style={styles.fieldContainer}>
+                                    <label style={styles.label}>🔗 Webhook URL (Somente Leitura)</label>
+                                    <input 
+                                        style={styles.webhookInput} 
+                                        type="text" 
+                                        value={`https://api.seucrm.com/api/webhook/instagram/${userId}`} 
+                                        readOnly
+                                    />
+                                    <p style={styles.helpText}>Configure esta URL no seu App do Facebook.</p>
+                                </div>
+                            </div>
+                        </details>
                     </>
                 );
             case 'telegram':
@@ -680,6 +796,69 @@ const styles = {
     
     successIcon: {
         fontSize: '18px'
+    },
+
+    // ✅ CORRIGIDO: Estilos para OAuth automático
+    autoConnectSection: {
+        background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
+        border: '1px solid rgba(102, 126, 234, 0.2)',
+        borderRadius: '16px',
+        padding: '24px',
+        marginBottom: '24px'
+    },
+
+    autoConnectTitle: {
+        margin: '0 0 16px 0',
+        fontSize: '16px',
+        fontWeight: '600',
+        color: '#374151'
+    },
+
+    connectButton: {
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: 'white',
+        border: 'none',
+        borderRadius: '12px',
+        padding: '14px 28px',
+        fontSize: '15px',
+        fontWeight: '600',
+        cursor: 'pointer',
+        transition: 'all 0.3s ease',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '12px'
+    },
+
+    connectButtonLoading: {
+        opacity: 0.7,
+        cursor: 'not-allowed'
+    },
+
+    spinner: {
+        width: '16px',
+        height: '16px',
+        border: '2px solid rgba(255, 255, 255, 0.3)',
+        borderTop: '2px solid white',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite'
+    },
+
+    manualConfig: {
+        border: '1px solid #e5e7eb',
+        borderRadius: '12px',
+        padding: '16px'
+    },
+
+    manualSummary: {
+        fontWeight: '600',
+        cursor: 'pointer',
+        padding: '8px 0',
+        color: '#6b7280'
+    },
+
+    manualFields: {
+        marginTop: '16px'
     }
 };
 

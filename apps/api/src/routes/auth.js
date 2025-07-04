@@ -2,6 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { supabase } = require('../config/supabase');
 const { authenticateToken } = require('../middleware/auth');
+const { trackPartnerEvent, processPartnerEvent } = require('../middleware/tracking');
 
 const router = express.Router();
 
@@ -18,7 +19,7 @@ const authLimiter = rateLimit({
 });
 
 // POST /api/auth/register - Registrar novo usuário
-router.post('/register', authLimiter, async (req, res) => {
+router.post('/register', authLimiter, trackPartnerEvent('registration'), processPartnerEvent, async (req, res) => {
   try {
     // 🔍 DEBUG: Ver o que está chegando na API
     console.log('🔍 Dados recebidos na API:', req.body);
@@ -83,6 +84,32 @@ const { email, password, name, phone, business_name, plan } = req.body;
         console.error('❌ Erro ao criar usuário na tabela users:', userError);
       } else {
         console.log('✅ Usuário criado na tabela users:', newUser.id);
+      // 🚀 CRIAR CANAIS BASEADO NO PLANO
+        const channelsToCreate = [];
+        
+        if (plan === 'basic') {
+          channelsToCreate.push('whatsapp');
+        } else if (plan === 'pro') {
+          channelsToCreate.push('whatsapp'); // sempre WhatsApp
+        } else if (plan === 'premium') {
+          channelsToCreate.push('whatsapp', 'instagram', 'telegram');
+        }
+        
+        // Criar registros na user_channels
+        for (const channelType of channelsToCreate) {
+          try {
+            await supabase.from('user_channels').insert({
+              user_id: newUser.id,
+              channel_type: channelType,
+              is_active: false, // Inativo até configurar
+              channel_config: {},
+              is_primary: channelType === 'whatsapp' // WhatsApp sempre primário
+            });
+            console.log(`✅ Canal ${channelType} criado para usuário ${newUser.id}`);
+          } catch (channelError) {
+            console.error(`❌ Erro ao criar canal ${channelType}:`, channelError);
+          }
+        }
       }
     } catch (supabaseError) {
       console.warn('Erro ao criar usuário no Supabase:', supabaseError);

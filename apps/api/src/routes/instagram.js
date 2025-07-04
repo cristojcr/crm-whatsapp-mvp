@@ -3,8 +3,27 @@ const express = require('express');
 const router = express.Router();
 const InstagramProcessor = require('../services/instagram-processor');
 const { validateChannelAccess } = require('../middleware/channel-validation');
+const { checkCompliance } = require('../middleware/compliance-middleware');
 
 const instagramProcessor = new InstagramProcessor();
+
+// Rota raiz para status do Instagram - ADICIONAR AQUI
+router.get('/', (req, res) => {
+  res.json({
+    success: true,
+    service: 'instagram',
+    message: 'Instagram API ativa',
+    status: 'operational',
+    available_endpoints: [
+      'GET /test - Testar configuração',
+      'POST /send - Enviar mensagem',
+      'GET /conversations - Listar conversas',
+      'GET /account-info - Info da conta',
+      'POST /test-send - Enviar teste'
+    ],
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Verificação do webhook Instagram dinâmico por usuário
 router.get('/webhook/:userId', (req, res) => {
@@ -57,7 +76,7 @@ router.post('/webhook/:userId', async (req, res) => {
 });
 
 // Enviar mensagem via Instagram (usando config do usuário)
-router.post('/send', validateChannelAccess, async (req, res) => {
+router.post('/send', validateChannelAccess, checkCompliance, async (req, res) => {
     try {
         const userId = req.user?.id || req.body.user_id;
         const { recipient_id, message, message_type } = req.body;
@@ -83,6 +102,11 @@ router.post('/send', validateChannelAccess, async (req, res) => {
             message_type || 'text'
         );
 
+        // ADICIONAR log de compliance se disponível
+        if (req.complianceInfo) {
+            console.log(`✅ Compliance Instagram OK - ${req.complianceInfo.remainingHours?.toFixed(1)}h restantes`);
+        }
+
         res.json({
             success: true,
             data: result
@@ -101,16 +125,18 @@ router.get('/test', async (req, res) => {
     try {
         const userId = req.user?.id || req.query.user_id;
         
-        if (!userId) {
-            return res.status(401).json({
+         if (!userId) {
+            return res.status(400).json({
                 success: false,
-                error: 'Usuário não autenticado'
+                error: 'User ID é obrigatório. Use: ?user_id=SEU_ID'
             });
         }
 
+        console.log('🔍 Testando Instagram para userId:', userId);
         // Testar se a configuração está funcionando
         const validation = await instagramProcessor.validateConfig(userId);
         
+        console.log('📊 Resultado da validação:', validation);
         res.json({
             success: validation.valid,
             config_valid: validation.valid,

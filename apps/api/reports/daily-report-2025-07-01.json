@@ -1,0 +1,32 @@
+{
+  "period": {
+    "start": "2025-06-30T21:51:29.518Z",
+    "end": "2025-07-01T21:51:29.518Z",
+    "duration": "24 hours"
+  },
+  "summary": {
+    "totalRequests": 0,
+    "successfulRequests": 0,
+    "errorCount": 0,
+    "successRate": 100,
+    "avgResponseTime": 0,
+    "uptime": 0.00004166666666666667,
+    "memoryUsage": 67.19262047810182,
+    "timestamp": "2025-07-01T21:51:29.519Z"
+  },
+  "requests": {
+    "total": 0,
+    "byEndpoint": {},
+    "topEndpoints": [],
+    "slowestEndpoints": []
+  },
+  "errors": {
+    "total": 0,
+    "byType": {},
+    "recent": [],
+    "trend": "stable"
+  },
+  "performance": {},
+  "alerts": [],
+  "recommendations": []
+}

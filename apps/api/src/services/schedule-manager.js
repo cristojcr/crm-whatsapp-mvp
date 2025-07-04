@@ -450,6 +450,255 @@ class ScheduleManager {
         // TODO: Implementar sistema de lista de espera
         console.log('📋 Processando lista de espera para:', cancelledAppointment.scheduled_at);
     }
+
+        // ===============================================
+    // MÉTODOS MULTI-PROFISSIONAL
+    // ===============================================
+
+    async checkMultipleProfessionalsAvailability(companyId, dateTime, duration = 60) {
+        try {
+            console.log('👥 Verificando disponibilidade de múltiplos profissionais');
+            
+            // Buscar todos os profissionais ativos da empresa
+            const { data: professionals } = await supabase
+                .from('professionals')
+                .select('*')
+                .eq('company_id', companyId)
+                .eq('is_active', true)
+                .order('display_order');
+            
+            if (!professionals?.length) {
+                return {
+                    success: false,
+                    error: 'Nenhum profissional encontrado'
+                };
+            }
+            
+            // Verificar disponibilidade de cada profissional
+            const availabilityResults = await Promise.all(
+                professionals.map(async (professional) => {
+                    const availability = await this.checkProfessionalAvailability(
+                        professional.id,
+                        dateTime,
+                        duration
+                    );
+                    
+                    return {
+                        professional,
+                        available: availability.success,
+                        reason: availability.reason || availability.error
+                    };
+                })
+            );
+            
+            const availableProfessionals = availabilityResults.filter(result => result.available);
+            
+            return {
+                success: true,
+                all_professionals: availabilityResults,
+                available_professionals: availableProfessionals,
+                total_available: availableProfessionals.length
+            };
+            
+        } catch (error) {
+            console.error('❌ Erro ao verificar disponibilidade múltipla:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    async checkProfessionalAvailability(professionalId, dateTime, duration = 60) {
+        try {
+            const appointmentDate = new Date(dateTime);
+            const dayOfWeek = appointmentDate.getDay();
+            const timeSlot = appointmentDate.toTimeString().slice(0, 5);
+            
+            // Buscar dados do profissional
+            const { data: professional } = await supabase
+                .from('professionals')
+                .select('*, company_id')
+                .eq('id', professionalId)
+                .single();
+            
+            if (!professional || !professional.is_active) {
+                return {
+                    success: false,
+                    error: 'Profissional não encontrado ou inativo'
+                };
+            }
+            
+            // Verificar horário de funcionamento do profissional (específico)
+            const { data: professionalAvailability } = await supabase
+                .from('professional_availability')
+                .select('*')
+                .eq('professional_id', professionalId)
+                .eq('day_of_week', dayOfWeek)
+                .eq('is_available', true)
+                .or(`effective_from.is.null,effective_from.lte.${appointmentDate.toISOString().split('T')[0]}`)
+                .or(`effective_until.is.null,effective_until.gte.${appointmentDate.toISOString().split('T')[0]}`)
+                .single();
+            
+            // Se não tem horário específico, usar horário da empresa
+            if (!professionalAvailability) {
+                const companyAvailability = await this.checkCompanyBusinessHours(
+                    professional.company_id,
+                    dayOfWeek,
+                    timeSlot
+                );
+                
+                if (!companyAvailability.success) {
+                    return companyAvailability;
+                }
+            } else {
+                // Verificar se está dentro do horário do profissional
+                const startTime = professionalAvailability.start_time;
+                const endTime = professionalAvailability.end_time;
+                const breakStart = professionalAvailability.break_start_time;
+                const breakEnd = professionalAvailability.break_end_time;
+                
+                if (timeSlot < startTime || timeSlot >= endTime) {
+                    return {
+                        success: false,
+                        error: `Fora do horário de atendimento de ${professional.name}`
+                    };
+                }
+                
+                // Verificar pausa/almoço
+                if (breakStart && breakEnd && timeSlot >= breakStart && timeSlot < breakEnd) {
+                    return {
+                        success: false,
+                        error: `Horário de pausa de ${professional.name}`
+                    };
+                }
+            }
+            
+            // Verificar conflitos com agendamentos existentes
+            const endDateTime = new Date(appointmentDate.getTime() + (duration * 60000));
+            
+            const { data: conflicts } = await supabase
+                .from('appointments')
+                .select('*')
+                .eq('professional_id', professionalId)
+                .eq('status', 'CONFIRMED')
+                .or(`and(scheduled_at.lte.${dateTime},scheduled_at.gte.${endDateTime.toISOString()}),and(scheduled_at.lte.${dateTime},scheduled_at.gte.${endDateTime.toISOString()})`);
+            
+            if (conflicts?.length > 0) {
+                return {
+                    success: false,
+                    error: `${professional.name} já tem agendamento neste horário`
+                };
+            }
+            
+            // Verificar Google Calendar se necessário
+            if (professional.google_calendar_email) {
+                const googleConflict = await this.checkGoogleCalendarAvailability(
+                    professional.google_calendar_email,
+                    dateTime,
+                    duration
+                );
+                
+                if (!googleConflict.success) {
+                    return {
+                        success: false,
+                        error: `Conflito na agenda Google de ${professional.name}`
+                    };
+                }
+            }
+            
+            return {
+                success: true,
+                professional,
+                reason: `${professional.name} disponível`
+            };
+            
+        } catch (error) {
+            console.error('❌ Erro ao verificar disponibilidade do profissional:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    async suggestAlternativeTimes(companyId, professionalId = null, preferredDate, duration = 60) {
+        try {
+            console.log('📅 Sugerindo horários alternativos');
+            
+            const suggestions = [];
+            const baseDate = new Date(preferredDate);
+            
+            // Buscar profissionais (específico ou todos da empresa)
+            let professionals;
+            if (professionalId) {
+                const { data: prof } = await supabase
+                    .from('professionals')
+                    .select('*')
+                    .eq('id', professionalId)
+                    .single();
+                professionals = prof ? [prof] : [];
+            } else {
+                const { data: profs } = await supabase
+                    .from('professionals')
+                    .select('*')
+                    .eq('company_id', companyId)
+                    .eq('is_active', true);
+                professionals = profs || [];
+            }
+            
+            // Verificar próximos 7 dias
+            for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+                const checkDate = new Date(baseDate);
+                checkDate.setDate(baseDate.getDate() + dayOffset);
+                
+                // Verificar horários de 8h às 18h de hora em hora
+                for (let hour = 8; hour < 18; hour++) {
+                    const checkDateTime = new Date(checkDate);
+                    checkDateTime.setHours(hour, 0, 0, 0);
+                    
+                    // Verificar cada profissional
+                    for (const professional of professionals) {
+                        const availability = await this.checkProfessionalAvailability(
+                            professional.id,
+                            checkDateTime.toISOString(),
+                            duration
+                        );
+                        
+                        if (availability.success) {
+                            suggestions.push({
+                                professional,
+                                datetime: checkDateTime.toISOString(),
+                                formatted_time: checkDateTime.toLocaleDateString('pt-BR') + ' às ' + 
+                                            checkDateTime.toLocaleTimeString('pt-BR', { 
+                                                hour: '2-digit', 
+                                                minute: '2-digit' 
+                                            })
+                            });
+                        }
+                    }
+                }
+                
+                // Limitar sugestões a 5 por dia
+                if (suggestions.length >= 35) break;
+            }
+            
+            return {
+                success: true,
+                suggestions: suggestions.slice(0, 10), // Top 10 sugestões
+                total_found: suggestions.length
+            };
+            
+        } catch (error) {
+            console.error('❌ Erro ao sugerir horários alternativos:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
 }
 
-module.exports = new ScheduleManager();
+
+
+module.exports = ScheduleManager;

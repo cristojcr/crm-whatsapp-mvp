@@ -82,6 +82,35 @@ class OptimizedMessageProcessor {
       
       // ETAPA 4: Análise de intenção melhorada
       const intentionResult = await this.analyzeIntentionAdvanced(basicContext, advancedContext);
+      // ETAPA 4.5: Processamento especial para agendamentos multi-profissional (ID 2.17)
+      if (intentionResult.intention === 'scheduling') {
+        console.log('🏥 [ID 2.17] Detectado agendamento - usando lógica multi-profissional');
+        
+        const appointmentResult = await this.processMultiProfessionalAppointment(basicContext, advancedContext, intentionResult);
+        
+        if (appointmentResult.success) {
+          // Salvar interação com dados do profissional
+          await this.saveAdvancedInteraction(basicContext, advancedContext, intentionResult, {
+            success: true,
+            response: appointmentResult.response,
+            provider: 'multi_professional_ai',
+            model: 'professional-suggestion-v1',
+            tokensUsed: 0,
+            costUSD: 0,
+            processingTime: Date.now() - startTime,
+            professional: appointmentResult.professional
+          }, { credits: 0 });
+          
+          return {
+            success: true,
+            intention: intentionResult.intention,
+            response: appointmentResult.response,
+            professional: appointmentResult.professional,
+            processingTime: Date.now() - startTime,
+            provider: 'multi_professional_ai'
+          };
+        }
+      }
       console.log(`🧠 [OTIMIZADO] Intenção: ${intentionResult.intention} (confiança: ${intentionResult.confidence})`);
 
       // ETAPA 5: Roteamento inteligente multi-dimensional (NOVO)
@@ -859,6 +888,116 @@ class OptimizedMessageProcessor {
     } else {
       return `${basePrompt}\n\nResposta concisa e eficiente, mantendo qualidade.`;
     }
+  }
+
+  // ===============================================
+  // PROCESSAMENTO MULTI-PROFISSIONAL (ID 2.17)
+  // ===============================================
+  async processMultiProfessionalAppointment(basicContext, advancedContext, intentionResult) {
+    console.log('🏥 [MULTI-PROF] Processando agendamento multi-profissional...');
+    
+    try {
+      // Importar ProfessionalManager
+      const ProfessionalManager = require('./professional-manager');
+      
+      // Analisar preferência de profissional na mensagem
+      const professionalPreference = await this.detectProfessionalPreference(
+        basicContext.message.content,
+        basicContext.user.id
+      );
+      
+      // Sugerir melhor profissional
+      const suggestion = await ProfessionalManager.suggestBestProfessional(
+        basicContext.user.company_id || basicContext.user.id,
+        basicContext.contact?.id,
+        new Date(), // Data solicitada - pode ser extraída da mensagem
+        null, // serviceId
+        professionalPreference.specialty
+      );
+      
+      if (!suggestion.success) {
+        return {
+          success: false,
+          response: "Não consegui encontrar profissionais disponíveis no momento. Nossa equipe entrará em contato."
+        };
+      }
+      
+      // Criar resposta inteligente
+      const professionalInfo = suggestion.professional;
+      const reasoning = suggestion.reasoning;
+      
+      let response = "";
+      
+      if (professionalPreference.explicitRequest) {
+        response = `Perfeito! Vou agendar com ${professionalInfo.name}. `;
+      } else if (reasoning.approach === 'specialty_match') {
+        response = `Para ${reasoning.reason}, recomendo ${professionalInfo.name} (${professionalInfo.specialty}). `;
+      } else if (reasoning.approach === 'continuity_based') {
+        response = `Como você já foi atendido por ${professionalInfo.name}, vou agendar com ele novamente. `;
+      } else {
+        response = `Vou agendar com ${professionalInfo.name}, que está disponível. `;
+      }
+      
+      response += `Qual horário prefere? Temos disponibilidade ${suggestion.availability.summary || 'esta semana'}.`;
+      
+      return {
+        success: true,
+        response: response,
+        professional: professionalInfo,
+        suggestion: suggestion,
+        needsDateTime: true
+      };
+      
+    } catch (error) {
+      console.error('❌ Erro no processamento multi-profissional:', error);
+      
+      return {
+        success: false,
+        response: "Entendi que você gostaria de agendar. Nossa equipe verificará a disponibilidade e retornará em breve."
+      };
+    }
+  }
+
+  async detectProfessionalPreference(messageContent, userId) {
+    const text = messageContent.toLowerCase();
+    
+    // Detectar menção específica a profissional
+    const drPatterns = [/dr\.?\s+(\w+)/g, /doutor\s+(\w+)/g, /doutora\s+(\w+)/g];
+    
+    for (const pattern of drPatterns) {
+      const match = pattern.exec(text);
+      if (match) {
+        return {
+          explicitRequest: true,
+          professionalName: match[1],
+          specialty: null
+        };
+      }
+    }
+    
+    // Detectar especialidade
+    const specialtyKeywords = {
+      'endodontista': ['canal', 'endodontia', 'root canal'],
+      'ortodontista': ['aparelho', 'ortodontia', 'alinhamento'],
+      'periodontista': ['gengiva', 'periodontia'],
+      'cirurgião': ['cirurgia', 'extração', 'implante']
+    };
+    
+    for (const [specialty, keywords] of Object.entries(specialtyKeywords)) {
+      if (keywords.some(keyword => text.includes(keyword))) {
+        return {
+          explicitRequest: false,
+          professionalName: null,
+          specialty: specialty
+        };
+      }
+    }
+    
+    return {
+      explicitRequest: false,
+      professionalName: null,
+      specialty: null
+    };
   }
 
   generateSmartFallbackResponse(intentionResult, basicContext) {
