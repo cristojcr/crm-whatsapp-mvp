@@ -79,7 +79,7 @@ class TelegramProcessor {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        chat_id: chatId,
+                        chat_id: message.chat.id,
                         text: responseText,
                         parse_mode: 'HTML'
                     })
