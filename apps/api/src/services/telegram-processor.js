@@ -70,8 +70,25 @@ class TelegramProcessor {
             
             // 💬 Enviar resposta (COMENTADO PARA TESTE)
             // await this.sendMessage(userId, chat.id, responseText);
-            console.log('🧪 TESTE: Resposta que seria enviada:', responseText);
-            console.log('🎯 IA FUNCIONANDO! Chat ID que receberia:', chat.id);
+            // ✅ ENVIAR MENSAGEM REAL
+            try {
+                const botConfig = await this.getUserBotConfig(userId);
+                const apiUrl = `https://api.telegram.org/bot${botConfig.bot_token}/sendMessage`;
+                
+                await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: responseText,
+                        parse_mode: 'HTML'
+                    })
+                });
+    
+    console.log('✅ Mensagem enviada via Telegram!');
+} catch (error) {
+    console.error('❌ Erro enviando mensagem:', error);
+}
             
             // Salvar resposta da IA
             await this.saveMessage({
