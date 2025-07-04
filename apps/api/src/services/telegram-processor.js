@@ -101,6 +101,8 @@ class TelegramProcessor {
 
     // Buscar ou criar contato (adaptado para multi-tenant)
     async findOrCreateContact(from, userId) {
+        console.log('🔥 VERSÃO NOVA DO CÓDIGO - DEBUG from:', JSON.stringify(from));
+        
         let { data: contact, error } = await supabaseAdmin
             .from('contacts')
             .select('*')
@@ -109,14 +111,24 @@ class TelegramProcessor {
             .single();
 
         if (error && error.code === 'PGRST116') {
-            // Contato não existe, criar novo
             const name = from.first_name + (from.last_name ? ` ${from.last_name}` : '');
+            
+            // SUPER DEFENSIVO - GARANTIR QUE NUNCA SERÁ NULL
+            let phone = 'telegram_default'; // VALOR PADRÃO
+            
+            if (from.username) {
+                phone = `@${from.username}`;
+            } else if (from.id) {
+                phone = `telegram_${from.id}`;
+            }
+            
+            console.log('🔥 PHONE SERÁ:', phone);
             
             const { data: newContact, error: createError } = await supabaseAdmin
                 .from('contacts')
                 .insert({
                     name: name,
-                    phone: from.username ? `@${from.username}` : 'Telegram', // ✅ CORREÇÃO AQUI
+                    phone: phone, // GARANTIDO QUE NÃO É NULL
                     telegram_id: from.id,
                     user_id: userId,
                     status: 'new'
