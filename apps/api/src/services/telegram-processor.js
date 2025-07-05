@@ -639,6 +639,25 @@ async handleProfessionalSelection(text, contactId, userId) {
     }
 }
 
+// 🆕 Formatar lista de profissionais para o usuário
+formatProfessionalsList(professionals) {
+    if (!professionals || professionals.length === 0) {
+        return "❌ Nenhum profissional disponível no momento.";
+    }
+
+    let message = "👨‍⚕️ *Profissionais disponíveis:*\n\n";
+    
+    professionals.forEach((prof, index) => {
+        const number = index + 1;
+        const specialty = prof.specialty ? ` - ${prof.specialty}` : '';
+        message += `${number}. *${prof.name}*${specialty}\n`;
+    });
+    
+    message += "\n📱 *Responda com o número ou nome do profissional de sua preferência.*";
+    
+    return message;
+}
+
 
 
 }
