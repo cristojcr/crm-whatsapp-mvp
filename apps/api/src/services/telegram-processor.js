@@ -368,15 +368,24 @@ ${selectedProfessional.specialty ? `🎯 Especialidade: ${selectedProfessional.s
 
         // 🌐 CHAMAR API DO GOOGLE CALENDAR
         console.log('📡 Criando evento no Google Calendar...');
-        const calendarApi = require('../services/google-calendar-service');
-        const eventResult = await calendarApi.createEvent({
-            userEmail: professionalCalendar.google_calendar_email,
-            accessToken: professionalCalendar.google_access_token,
-            title: eventTitle,
-            description: eventDescription,
-            startDateTime: appointmentDate.toISOString(),
-            endDateTime: new Date(appointmentDate.getTime() + 60 * 60 * 1000).toISOString(), // +1 hora
+        // ✅ SUBSTITUIR por chamada para sua API existente:
+        const response = await fetch(`http://localhost:3001/api/calendar/create/${professionalId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': req.headers.authorization // usar token do request
+            },
+            body: JSON.stringify({
+                title: `Consulta - ${professionalName}`,
+                description: `Agendamento via IA WhatsApp CRM`,
+                startDateTime: startDateTime,
+                endDateTime: endDateTime,
+                attendeeEmail: contactEmail
+            })
         });
+
+        const eventResult = await response.json();
+
 
         if (!eventResult.success) {
             console.error('❌ Erro criando evento:', eventResult.error);
