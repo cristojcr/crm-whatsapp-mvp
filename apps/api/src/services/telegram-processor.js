@@ -566,6 +566,11 @@ async savePendingAppointment(contactId, userId, analysis, professionals) {
 // 🆕 3. Verificar se usuário está escolhendo profissional
 async isProfessionalSelection(text, contactId, userId) {
     try {
+        console.log('🔍 DEBUG isProfessionalSelection:');
+        console.log('  Text:', text);
+        console.log('  ContactId:', contactId);
+        console.log('  UserId:', userId);
+        
         // Verificar se existe agendamento pendente
         const { data: pending, error } = await supabaseAdmin
             .from('pending_appointments')
@@ -577,20 +582,37 @@ async isProfessionalSelection(text, contactId, userId) {
             .limit(1)
             .single();
 
+        console.log('📊 Busca pending_appointments:');
+        console.log('  Data:', pending);
+        console.log('  Error:', error);
+
         if (error || !pending) {
+            console.log('❌ Nenhum agendamento pendente encontrado');
             return false;
         }
 
+        console.log('✅ Agendamento pendente encontrado!');
+
         // Verificar se texto parece ser seleção (número ou nome)
         const cleanText = text.trim().toLowerCase();
+        console.log('🧹 Texto limpo:', cleanText);
+        
         const isNumber = /^[1-9]$/.test(cleanText);
+        console.log('🔢 É número?', isNumber);
+        
         const professionals = JSON.parse(pending.professionals);
+        console.log('👥 Profissionais disponíveis:', professionals.length);
+        
         const isName = professionals.some(prof => 
             prof.name.toLowerCase().includes(cleanText) || 
             cleanText.includes(prof.name.toLowerCase())
         );
+        console.log('📝 É nome?', isName);
 
-        return isNumber || isName;
+        const result = isNumber || isName;
+        console.log('🎯 Resultado final isProfessionalSelection:', result);
+        
+        return result;
     } catch (error) {
         console.error('❌ Erro verificando seleção:', error);
         return false;
