@@ -505,33 +505,39 @@ class TelegramProcessor {
     }
 
     // 🆕 Buscar profissionais com Google Calendar ativo
-async getAvailableProfessionals(userId) {
-    try {
-        const { data: professionals, error } = await supabaseAdmin
-            .from('professionals')
-            .select(`
-                id,
-                name,
-                specialty,
-                calendar_connected,
-                google_calendar_id
-            `)
-            .eq('user_id', userId)
-            .eq('calendar_connected', true)
-            .eq('is_active', true);
+    async getAvailableProfessionals(userId) {
+        try {
+            console.log('🔍 DEBUG: Buscando profissionais para company_id:', userId);
+            
+            const { data: professionals, error } = await supabaseAdmin
+                .from('professionals')
+                .select(`
+                    id,
+                    name,
+                    specialty,
+                    calendar_connected,
+                    google_calendar_id,
+                    is_active,
+                    company_id
+                `)
+                .eq('company_id', userId)  // ✅ MUDANÇA: company_id em vez de user_id
+                .eq('calendar_connected', true)
+                .eq('is_active', true);
 
-        if (error) {
-            console.error('❌ Erro buscando profissionais:', error);
+            console.log('🔍 DEBUG: Query result:', { professionals, error });
+            console.log(`✅ Encontrados ${professionals?.length || 0} profissionais ativos`);
+
+            if (error) {
+                console.error('❌ Erro buscando profissionais:', error);
+                return [];
+            }
+
+            return professionals || [];
+        } catch (error) {
+            console.error('❌ Erro na busca:', error);
             return [];
         }
-
-        console.log(`✅ Encontrados ${professionals.length} profissionais ativos`);
-        return professionals || [];
-    } catch (error) {
-        console.error('❌ Erro na busca:', error);
-        return [];
     }
-}
 
 // 🆕 Salvar agendamento pendente para posterior confirmação
 async savePendingAppointment(contactId, userId, analysis, professionals) {
