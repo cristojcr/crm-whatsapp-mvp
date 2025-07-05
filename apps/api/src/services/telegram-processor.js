@@ -305,19 +305,35 @@ async handleSchedulingIntent(analysis, contact, userId, selectedProfessional = n
         console.log('🗓️ Iniciando agendamento escalável...');
         console.log('👤 Profissional selecionado:', selectedProfessional?.name || 'Automático');
         
-        // 🔍 USAR CALENDÁRIO PRINCIPAL DO USUÁRIO (não do profissional)
-        const { data: userCalendar, error: calendarError } = await supabaseAdmin
-            .from('user_profiles')
-            .select('google_calendar_email, google_calendar_id')
-            .eq('user_id', userId)
-            .single();
-
-        if (calendarError || !userCalendar?.google_calendar_email) {
-            console.error('❌ Usuário não tem Google Calendar conectado:', calendarError);
-            return "❌ *Ops!* Você precisa conectar seu Google Calendar primeiro.\n\nAcesse o dashboard e conecte sua conta do Google.";
+        if (!selectedProfessional || !selectedProfessional.id) {
+            return "❌ *Ops!* Erro na seleção do profissional. Tente novamente.";
         }
 
-        console.log('✅ Calendário do usuário encontrado:', userCalendar.google_calendar_email);
+        // 🔍 BUSCAR DADOS DO GOOGLE CALENDAR DO PROFISSIONAL SELECIONADO
+        const { data: professionalCalendar, error: calendarError } = await supabaseAdmin
+            .from('professionals')
+            .select('google_calendar_email, google_calendar_id, google_access_token, google_refresh_token, calendar_connected')
+            .eq('id', selectedProfessional.id)
+            .single();
+
+        if (calendarError || !professionalCalendar) {
+            console.error('❌ Erro buscando dados do profissional:', calendarError);
+            return "❌ *Ops!* Erro ao acessar dados do profissional. Tente novamente.";
+        }
+
+        // ✅ VERIFICAR SE PROFISSIONAL TEM GOOGLE CALENDAR CONECTADO
+        if (!professionalCalendar.calendar_connected || !professionalCalendar.google_calendar_email) {
+            console.log('❌ Profissional sem Google Calendar:', professionalCalendar);
+            return `❌ *Ops!* O profissional **${selectedProfessional.name}** ainda não conectou o Google Calendar.
+
+📞 *Entre em contato diretamente para agendar:*
+👨‍⚕️ **${selectedProfessional.name}**
+${selectedProfessional.specialty ? `🎯 **Especialidade:** ${selectedProfessional.specialty}` : ''}
+
+⚙️ *Administrador: Configure o Google Calendar deste profissional no dashboard.*`;
+        }
+
+        console.log('✅ Calendário do profissional encontrado:', professionalCalendar.google_calendar_email);
 
         // 📅 EXTRAIR DATA/HORA da análise IA
         const { dateTime } = analysis;
@@ -339,32 +355,27 @@ async handleSchedulingIntent(analysis, contact, userId, selectedProfessional = n
             appointmentDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         }
 
-        // 🏥 INFORMAÇÕES DO PROFISSIONAL (ou usar padrão)
-        const professional = selectedProfessional || {
-            name: "Profissional da Clínica",
-            specialty: "Consulta Geral"
-        };
-
-        // 📝 CRIAR EVENTO NO GOOGLE CALENDAR DO USUÁRIO
-        const eventTitle = `Consulta - ${professional.name}`;
-        const eventDescription = `👨‍⚕️ Profissional: ${professional.name}
-${professional.specialty ? `🎯 Especialidade: ${professional.specialty}` : ''}
-
-👤 Paciente: ${contact.name || contact.phone}
+        // 📝 CRIAR EVENTO NO GOOGLE CALENDAR DO PROFISSIONAL
+        const eventTitle = `Consulta - ${contact.name || contact.phone}`;
+        const eventDescription = `👤 Paciente: ${contact.name || 'Cliente'}
 📞 Telefone: ${contact.phone}
+
+👨‍⚕️ Profissional: ${selectedProfessional.name}
+${selectedProfessional.specialty ? `🎯 Especialidade: ${selectedProfessional.specialty}` : ''}
 
 🤖 Agendamento via IA WhatsApp CRM
 ⏰ Agendado em: ${new Date().toLocaleString('pt-BR')}`;
 
         // 🌐 CHAMAR API DO GOOGLE CALENDAR
+        console.log('📡 Criando evento no Google Calendar...');
         const calendarApi = require('../services/google-calendar-service');
         const eventResult = await calendarApi.createEvent({
-            userEmail: userCalendar.google_calendar_email,
+            userEmail: professionalCalendar.google_calendar_email,
+            accessToken: professionalCalendar.google_access_token,
             title: eventTitle,
             description: eventDescription,
             startDateTime: appointmentDate.toISOString(),
             endDateTime: new Date(appointmentDate.getTime() + 60 * 60 * 1000).toISOString(), // +1 hora
-            attendees: [contact.phone] // Se tiver email do contato
         });
 
         if (!eventResult.success) {
@@ -380,7 +391,7 @@ ${professional.specialty ? `🎯 Especialidade: ${professional.specialty}` : ''}
             .insert({
                 user_id: userId,
                 contact_id: contact.id,
-                professional_id: selectedProfessional?.id || null,
+                professional_id: selectedProfessional.id,
                 appointment_date: appointmentDate.toISOString(),
                 status: 'confirmed',
                 google_event_id: eventResult.eventId,
@@ -399,13 +410,13 @@ ${professional.specialty ? `🎯 Especialidade: ${professional.specialty}` : ''}
         // 🎉 MENSAGEM DE SUCESSO
         const successMessage = `✅ *Agendamento confirmado!*
 
-👨‍⚕️ *Profissional:* ${professional.name}
-${professional.specialty ? `🎯 *Especialidade:* ${professional.specialty}` : ''}
+👨‍⚕️ *Profissional:* ${selectedProfessional.name}
+${selectedProfessional.specialty ? `🎯 *Especialidade:* ${selectedProfessional.specialty}` : ''}
 📅 *Data:* ${appointmentDate.toLocaleDateString('pt-BR')}
 🕐 *Horário:* ${appointmentDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
 
 📱 *Você receberá lembretes automáticos.*
-📝 *O evento foi adicionado ao seu Google Calendar.*
+📝 *O evento foi adicionado ao calendário do profissional.*
 
 Em caso de dúvidas, entre em contato! 😊`;
 
