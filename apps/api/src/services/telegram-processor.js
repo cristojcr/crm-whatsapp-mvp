@@ -542,12 +542,15 @@ class TelegramProcessor {
 // 🆕 2. Salvar agendamento pendente
 async savePendingAppointment(contactId, userId, analysis, professionals) {
     try {
+        console.log('💾 Salvando agendamento pendente...');
+        
         const { error } = await supabaseAdmin
             .from('pending_appointments')
             .insert({
                 contact_id: contactId,
                 user_id: userId,
                 message_content: analysis.originalMessage || '',
+                analysis: JSON.stringify(analysis), // ← 🆕 CAMPO FALTANDO!
                 professionals: JSON.stringify(professionals),
                 expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 min
                 created_at: new Date().toISOString()
@@ -556,7 +559,7 @@ async savePendingAppointment(contactId, userId, analysis, professionals) {
         if (error) {
             console.error('❌ Erro salvando agendamento pendente:', error);
         } else {
-            console.log('✅ Agendamento pendente salvo');
+            console.log('✅ Agendamento pendente salvo com sucesso!');
         }
     } catch (error) {
         console.error('❌ Erro salvando pendente:', error);
