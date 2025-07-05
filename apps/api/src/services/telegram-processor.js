@@ -539,48 +539,65 @@ class TelegramProcessor {
         }
     }
 
-// 🆕 Salvar agendamento pendente para posterior confirmação
+// 🆕 2. Salvar agendamento pendente
 async savePendingAppointment(contactId, userId, analysis, professionals) {
     try {
-        const pendingData = {
-            contact_id: contactId,
-            user_id: userId,
-            analysis: analysis,
-            professionals: professionals,
-            status: 'awaiting_professional_selection',
-            created_at: new Date().toISOString(),
-            expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 min
-        };
-
-        await supabaseAdmin
+        const { error } = await supabaseAdmin
             .from('pending_appointments')
-            .insert(pendingData);
+            .insert({
+                contact_id: contactId,
+                user_id: userId,
+                message_content: analysis.originalMessage || '',
+                professionals: JSON.stringify(professionals),
+                expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 min
+                created_at: new Date().toISOString()
+            });
 
-        console.log('✅ Agendamento pendente salvo');
+        if (error) {
+            console.error('❌ Erro salvando agendamento pendente:', error);
+        } else {
+            console.log('✅ Agendamento pendente salvo');
+        }
     } catch (error) {
-        console.error('❌ Erro salvando agendamento pendente:', error);
+        console.error('❌ Erro salvando pendente:', error);
     }
 }
 
-// 🆕 Verificar se é seleção de profissional
+// 🆕 3. Verificar se usuário está escolhendo profissional
 async isProfessionalSelection(text, contactId, userId) {
     try {
+        // Verificar se existe agendamento pendente
         const { data: pending, error } = await supabaseAdmin
             .from('pending_appointments')
             .select('*')
             .eq('contact_id', contactId)
             .eq('user_id', userId)
-            .eq('status', 'awaiting_professional_selection')
             .gt('expires_at', new Date().toISOString())
+            .order('created_at', { ascending: false })
+            .limit(1)
             .single();
 
-        return !error && pending;
+        if (error || !pending) {
+            return false;
+        }
+
+        // Verificar se texto parece ser seleção (número ou nome)
+        const cleanText = text.trim().toLowerCase();
+        const isNumber = /^[1-9]$/.test(cleanText);
+        const professionals = JSON.parse(pending.professionals);
+        const isName = professionals.some(prof => 
+            prof.name.toLowerCase().includes(cleanText) || 
+            cleanText.includes(prof.name.toLowerCase())
+        );
+
+        return isNumber || isName;
     } catch (error) {
+        console.error('❌ Erro verificando seleção:', error);
         return false;
     }
 }
 
-// 🆕 Processar seleção de profissional
+// 🆕 4. Processar seleção do profissional
 async handleProfessionalSelection(text, contactId, userId) {
     try {
         // Buscar agendamento pendente
@@ -589,57 +606,65 @@ async handleProfessionalSelection(text, contactId, userId) {
             .select('*')
             .eq('contact_id', contactId)
             .eq('user_id', userId)
-            .eq('status', 'awaiting_professional_selection')
+            .gt('expires_at', new Date().toISOString())
+            .order('created_at', { ascending: false })
+            .limit(1)
             .single();
 
         if (error || !pending) {
-            return "❌ *Sessão expirada.* Por favor, solicite um novo agendamento.";
+            return "❌ Não encontrei nenhum agendamento pendente. Por favor, solicite novamente.";
         }
 
-        const professionals = pending.professionals;
+        const professionals = JSON.parse(pending.professionals);
+        const cleanText = text.trim().toLowerCase();
         let selectedProfessional = null;
 
-        // 🎯 Detectar seleção por número (1, 2, 3...)
-        const numberMatch = text.match(/^(\d+)$/);
-        if (numberMatch) {
-            const index = parseInt(numberMatch[1]) - 1;
+        // Tentar encontrar por número
+        if (/^[1-9]$/.test(cleanText)) {
+            const index = parseInt(cleanText) - 1;
             if (index >= 0 && index < professionals.length) {
                 selectedProfessional = professionals[index];
             }
         }
 
-        // 🎯 Detectar seleção por nome
+        // Se não encontrou por número, tentar por nome
         if (!selectedProfessional) {
-            const textLower = text.toLowerCase();
             selectedProfessional = professionals.find(prof => 
-                prof.name.toLowerCase().includes(textLower) ||
-                textLower.includes(prof.name.toLowerCase())
+                prof.name.toLowerCase().includes(cleanText) || 
+                cleanText.includes(prof.name.toLowerCase())
             );
         }
 
         if (!selectedProfessional) {
-            return `❌ *Profissional não encontrado.*\n\n${this.formatProfessionalsList(professionals)}`;
+            return `❌ Não consegui identificar o profissional "${text}". Por favor, responda com o número (1, 2, 3...) ou nome completo.`;
         }
 
-        // 🎯 Processar agendamento com profissional selecionado
-        const analysis = pending.analysis;
-        const result = await this.handleSchedulingIntent(analysis, { id: contactId }, userId, selectedProfessional);
+        // 🎯 AGENDAR COM PROFISSIONAL SELECIONADO
+        const analysis = {
+            intention: 'scheduling',
+            confidence: 0.95,
+            originalMessage: pending.message_content
+        };
+
+        const contact = await this.getContactById(contactId);
+        const appointmentResult = await this.handleSchedulingIntent(analysis, contact, userId, selectedProfessional);
 
         // 🧹 Limpar agendamento pendente
         await supabaseAdmin
             .from('pending_appointments')
             .delete()
-            .eq('id', pending.id);
+            .eq('contact_id', contactId)
+            .eq('user_id', userId);
 
-        return result;
+        return appointmentResult;
 
     } catch (error) {
         console.error('❌ Erro processando seleção:', error);
-        return "❌ *Erro interno.* Tente novamente em alguns minutos.";
+        return "❌ Erro processando sua escolha. Tente novamente.";
     }
 }
 
-// 🆕 Formatar lista de profissionais para o usuário
+// 🆕 1. Formatar lista de profissionais para o usuário
 formatProfessionalsList(professionals) {
     if (!professionals || professionals.length === 0) {
         return "❌ Nenhum profissional disponível no momento.";
@@ -656,6 +681,23 @@ formatProfessionalsList(professionals) {
     message += "\n📱 *Responda com o número ou nome do profissional de sua preferência.*";
     
     return message;
+}
+
+// 🆕 5. Buscar contato por ID (helper)
+async getContactById(contactId) {
+    try {
+        const { data: contact, error } = await supabaseAdmin
+            .from('contacts')
+            .select('*')
+            .eq('id', contactId)
+            .single();
+
+        if (error) throw error;
+        return contact;
+    } catch (error) {
+        console.error('❌ Erro buscando contato:', error);
+        throw error;
+    }
 }
 
 
