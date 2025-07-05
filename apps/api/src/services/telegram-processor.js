@@ -300,41 +300,122 @@ class TelegramProcessor {
         return { processed: true, data };
     }
     // Processar intenção de agendamento com IA + Google Calendar
-    async handleSchedulingIntent(analysis, contact, userId, selectedProfessional) {
-        try {
-            console.log('🗓️ Processando agendamento com IA...');
-            
-            // 🎯 Usar profissional selecionado em vez de hardcoded
-            const professionalId = selectedProfessional.id;
-            
-            // ... resto da função igual, mas usar professionalId dinâmico
-            
-            const response = await fetch(`${process.env.API_BASE_URL || 'http://localhost:3001'}/api/calendar/create/${professionalId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title: `Consulta - ${contact.name || 'Cliente'}`,
-                    description: `Agendamento via Telegram IA\n\nCliente: ${contact.name}\nAnálise: ${analysis.reasoning}`,
-                    startDateTime: `${analysis.dateTime.suggestedDate}T${analysis.dateTime.suggestedTime}:00`,
-                    endDateTime: `${analysis.dateTime.suggestedDate}T${this.addHour(analysis.dateTime.suggestedTime)}:00`,
-                    attendees: []
-                })
-            });
+async handleSchedulingIntent(analysis, contact, userId, selectedProfessional = null) {
+    try {
+        console.log('🗓️ Iniciando agendamento escalável...');
+        console.log('👤 Profissional selecionado:', selectedProfessional?.name || 'Automático');
+        
+        // 🔍 USAR CALENDÁRIO PRINCIPAL DO USUÁRIO (não do profissional)
+        const { data: userCalendar, error: calendarError } = await supabaseAdmin
+            .from('user_profiles')
+            .select('google_calendar_email, google_calendar_id')
+            .eq('user_id', userId)
+            .single();
 
-            if (response.ok) {
-                const eventData = await response.json();
-                console.log(`✅ Evento criado com sucesso: ${eventData.event.id}`);
-                
-                return `✅ *Agendamento confirmado!*\n\n📅 *Data:* ${this.formatDate(analysis.dateTime.suggestedDate)}\n🕒 *Horário:* ${analysis.dateTime.suggestedTime}\n👨‍⚕️ *Profissional:* ${selectedProfessional.name}\n\nSeu agendamento foi salvo no Google Calendar. Você receberá lembretes automáticos! 🔔`;
-            } else {
-                throw new Error('Erro na API do calendar');
-            }
-            
-        } catch (error) {
-            console.error('❌ Erro ao criar evento:', error);
+        if (calendarError || !userCalendar?.google_calendar_email) {
+            console.error('❌ Usuário não tem Google Calendar conectado:', calendarError);
+            return "❌ *Ops!* Você precisa conectar seu Google Calendar primeiro.\n\nAcesse o dashboard e conecte sua conta do Google.";
+        }
+
+        console.log('✅ Calendário do usuário encontrado:', userCalendar.google_calendar_email);
+
+        // 📅 EXTRAIR DATA/HORA da análise IA
+        const { dateTime } = analysis;
+        if (!dateTime || (!dateTime.suggestedDate && !dateTime.suggestedTime)) {
+            return "❌ Não consegui identificar a data e hora desejada. Por favor, informe quando gostaria de agendar.";
+        }
+
+        // 🕐 PROCESSAR DATA E HORA
+        let appointmentDate = new Date();
+        
+        // Data sugerida pela IA
+        if (dateTime.suggestedDate) {
+            appointmentDate = new Date(dateTime.suggestedDate);
+        }
+        
+        // Hora sugerida pela IA
+        if (dateTime.suggestedTime) {
+            const [hours, minutes] = dateTime.suggestedTime.split(':');
+            appointmentDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        }
+
+        // 🏥 INFORMAÇÕES DO PROFISSIONAL (ou usar padrão)
+        const professional = selectedProfessional || {
+            name: "Profissional da Clínica",
+            specialty: "Consulta Geral"
+        };
+
+        // 📝 CRIAR EVENTO NO GOOGLE CALENDAR DO USUÁRIO
+        const eventTitle = `Consulta - ${professional.name}`;
+        const eventDescription = `👨‍⚕️ Profissional: ${professional.name}
+${professional.specialty ? `🎯 Especialidade: ${professional.specialty}` : ''}
+
+👤 Paciente: ${contact.name || contact.phone}
+📞 Telefone: ${contact.phone}
+
+🤖 Agendamento via IA WhatsApp CRM
+⏰ Agendado em: ${new Date().toLocaleString('pt-BR')}`;
+
+        // 🌐 CHAMAR API DO GOOGLE CALENDAR
+        const calendarApi = require('../services/google-calendar-service');
+        const eventResult = await calendarApi.createEvent({
+            userEmail: userCalendar.google_calendar_email,
+            title: eventTitle,
+            description: eventDescription,
+            startDateTime: appointmentDate.toISOString(),
+            endDateTime: new Date(appointmentDate.getTime() + 60 * 60 * 1000).toISOString(), // +1 hora
+            attendees: [contact.phone] // Se tiver email do contato
+        });
+
+        if (!eventResult.success) {
+            console.error('❌ Erro criando evento:', eventResult.error);
             return "❌ *Ops!* Não consegui confirmar seu agendamento no momento. 😔\n\nTente novamente em alguns minutos ou entre em contato diretamente.";
         }
+
+        console.log('✅ Evento criado com sucesso:', eventResult.eventId);
+
+        // 💾 SALVAR AGENDAMENTO NO BANCO
+        const { error: appointmentError } = await supabaseAdmin
+            .from('appointments')
+            .insert({
+                user_id: userId,
+                contact_id: contact.id,
+                professional_id: selectedProfessional?.id || null,
+                appointment_date: appointmentDate.toISOString(),
+                status: 'confirmed',
+                google_event_id: eventResult.eventId,
+                title: eventTitle,
+                description: eventDescription,
+                created_via: 'telegram_ai',
+                created_at: new Date().toISOString()
+            });
+
+        if (appointmentError) {
+            console.error('❌ Erro salvando agendamento:', appointmentError);
+        } else {
+            console.log('✅ Agendamento salvo no banco');
+        }
+
+        // 🎉 MENSAGEM DE SUCESSO
+        const successMessage = `✅ *Agendamento confirmado!*
+
+👨‍⚕️ *Profissional:* ${professional.name}
+${professional.specialty ? `🎯 *Especialidade:* ${professional.specialty}` : ''}
+📅 *Data:* ${appointmentDate.toLocaleDateString('pt-BR')}
+🕐 *Horário:* ${appointmentDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+
+📱 *Você receberá lembretes automáticos.*
+📝 *O evento foi adicionado ao seu Google Calendar.*
+
+Em caso de dúvidas, entre em contato! 😊`;
+
+        return successMessage;
+
+    } catch (error) {
+        console.error('❌ Erro no agendamento escalável:', error);
+        return "❌ *Ops!* Não consegui confirmar seu agendamento no momento. 😔\n\nTente novamente em alguns minutos ou entre em contato diretamente.";
     }
+}
 
     // 📅 PROCESSAR AGENDAMENTO
     async processSchedulingRequest(analysis, contact, userId) {
