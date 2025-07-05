@@ -63,7 +63,24 @@ class TelegramProcessor {
             // Processar baseado na intenção
             let responseText = '';
             if (analysis.intention === 'scheduling') {
-                responseText = await this.handleSchedulingIntent(analysis, contact, userId, botConfig);
+                // 🆕 NOVO FLUXO: Buscar profissionais primeiro
+                const professionals = await this.getAvailableProfessionals(userId);
+                
+                if (professionals.length === 0) {
+                    responseText = "❌ *Ops!* Nenhum profissional está disponível no momento.\n\nTente novamente mais tarde ou entre em contato diretamente.";
+                } else if (professionals.length === 1) {
+                    // 🎯 Só 1 profissional: agendar direto
+                    responseText = await this.handleSchedulingIntent(analysis, contact, userId, professionals[0]);
+                } else {
+                    // 🎯 Múltiplos profissionais: perguntar escolha
+                    responseText = this.formatProfessionalsList(professionals);
+                    
+                    // 💾 Salvar estado do agendamento pendente
+                    await this.savePendingAppointment(contact.id, userId, analysis, professionals);
+                }
+            } else if (await this.isProfessionalSelection(text, contact.id, userId)) {
+                // 🆕 FASE 3: Usuário está escolhendo profissional
+                responseText = await this.handleProfessionalSelection(text, contact.id, userId);
             } else {
                 responseText = await this.handleGeneralResponse(analysis, text);
             }
@@ -283,75 +300,39 @@ class TelegramProcessor {
         return { processed: true, data };
     }
     // Processar intenção de agendamento com IA + Google Calendar
-    async handleSchedulingIntent(analysis, contact, userId, botConfig) {
+    async handleSchedulingIntent(analysis, contact, userId, selectedProfessional) {
         try {
             console.log('🗓️ Processando agendamento com IA...');
             
-            // Extrair informações da análise
-            const { dateTime } = analysis;
+            // 🎯 Usar profissional selecionado em vez de hardcoded
+            const professionalId = selectedProfessional.id;
             
-            if (!dateTime || !dateTime.suggestedDate || !dateTime.suggestedTime) {
-                return "Entendi que você quer agendar! 📅\n\nPor favor, me informe:\n• Que dia você prefere?\n• Qual horário seria melhor?\n\nExemplo: 'Quero agendar para amanhã às 14h'";
-            }
-
-            // Buscar profissionais da empresa com Google Calendar conectado
-            const { data: professionals, error } = await supabaseAdmin
-                .from('professionals')
-                .select('*')
-                .eq('company_id', userId)
-                .eq('calendar_connected', true)
-                .limit(1);
-
-            if (error || !professionals || professionals.length === 0) {
-                return "Ops! Nenhum profissional tem o Google Calendar configurado ainda. 📅\n\nPeça para o administrador conectar o Google Calendar no dashboard.";
-            }
-
-            const professional = professionals[0];
+            // ... resto da função igual, mas usar professionalId dinâmico
             
-            // Criar data/hora do evento
-            const eventDate = new Date(dateTime.suggestedDate + 'T' + dateTime.suggestedTime + ':00.000Z');
-            const eventEnd = new Date(eventDate.getTime() + 60 * 60 * 1000); // +1 hora
-
-            // Dados do evento
-            const eventData = {
-                title: `Consulta - ${contact.name}`,
-                description: `Agendamento feito via Telegram\n\nContato: ${contact.name}\nTelefone: ${contact.phone}`,
-                startDateTime: eventDate.toISOString(),
-                endDateTime: eventEnd.toISOString(),
-                attendeeEmail: contact.email || null
-            };
-
-            console.log('📅 Criando evento no Google Calendar...');
-
-            // Chamar API do Calendar para criar evento
-            const response = await fetch(`http://localhost:3001/api/calendar/create/${professional.id}`, {
+            const response = await fetch(`${process.env.API_BASE_URL || 'http://localhost:3001'}/api/calendar/create/${professionalId}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    // ✅ SEM Authorization - chamada interna do sistema
-                },
-                body: JSON.stringify(eventData)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: `Consulta - ${contact.name || 'Cliente'}`,
+                    description: `Agendamento via Telegram IA\n\nCliente: ${contact.name}\nAnálise: ${analysis.reasoning}`,
+                    startDateTime: `${analysis.dateTime.suggestedDate}T${analysis.dateTime.suggestedTime}:00`,
+                    endDateTime: `${analysis.dateTime.suggestedDate}T${this.addHour(analysis.dateTime.suggestedTime)}:00`,
+                    attendees: []
+                })
             });
 
-            const result = await response.json();
-
-            if (response.ok && result.success) {
-                console.log('✅ Evento criado com sucesso no Google Calendar!');
+            if (response.ok) {
+                const eventData = await response.json();
+                console.log(`✅ Evento criado com sucesso: ${eventData.event.id}`);
                 
-                // Resposta de sucesso
-                const dataFormatada = eventDate.toLocaleDateString('pt-BR');
-                const horaFormatada = eventDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                
-                return `✅ Agendamento confirmado!\n\n📅 Data: ${dataFormatada}\n🕒 Horário: ${horaFormatada}\n👨‍⚕️ Profissional: ${professional.name}\n\nSeu agendamento foi salvo no Google Calendar. Você receberá lembretes automáticos! 🔔`;
-                
+                return `✅ *Agendamento confirmado!*\n\n📅 *Data:* ${this.formatDate(analysis.dateTime.suggestedDate)}\n🕒 *Horário:* ${analysis.dateTime.suggestedTime}\n👨‍⚕️ *Profissional:* ${selectedProfessional.name}\n\nSeu agendamento foi salvo no Google Calendar. Você receberá lembretes automáticos! 🔔`;
             } else {
-                console.error('❌ Erro ao criar evento:', result);
-                return "Ops! Não consegui confirmar seu agendamento no momento. 😔\n\nTente novamente em alguns minutos ou entre em contato diretamente.";
+                throw new Error('Erro na API do calendar');
             }
-
+            
         } catch (error) {
-            console.error('❌ Erro no handleSchedulingIntent:', error);
-            return "Entendi que você quer agendar! 📅\n\nNo momento estou com dificuldades técnicas. Tente novamente em alguns minutos.";
+            console.error('❌ Erro ao criar evento:', error);
+            return "❌ *Ops!* Não consegui confirmar seu agendamento no momento. 😔\n\nTente novamente em alguns minutos ou entre em contato diretamente.";
         }
     }
 
@@ -522,6 +503,137 @@ class TelegramProcessor {
         
         return responses[analysis.intention] || "Obrigado pela mensagem! Como posso ajudar você? 😊";
     }
+
+    // 🆕 Buscar profissionais com Google Calendar ativo
+async getAvailableProfessionals(userId) {
+    try {
+        const { data: professionals, error } = await supabaseAdmin
+            .from('professionals')
+            .select(`
+                id,
+                name,
+                specialty,
+                calendar_connected,
+                google_calendar_id
+            `)
+            .eq('user_id', userId)
+            .eq('calendar_connected', true)
+            .eq('is_active', true);
+
+        if (error) {
+            console.error('❌ Erro buscando profissionais:', error);
+            return [];
+        }
+
+        console.log(`✅ Encontrados ${professionals.length} profissionais ativos`);
+        return professionals || [];
+    } catch (error) {
+        console.error('❌ Erro na busca:', error);
+        return [];
+    }
+}
+
+// 🆕 Salvar agendamento pendente para posterior confirmação
+async savePendingAppointment(contactId, userId, analysis, professionals) {
+    try {
+        const pendingData = {
+            contact_id: contactId,
+            user_id: userId,
+            analysis: analysis,
+            professionals: professionals,
+            status: 'awaiting_professional_selection',
+            created_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 min
+        };
+
+        await supabaseAdmin
+            .from('pending_appointments')
+            .insert(pendingData);
+
+        console.log('✅ Agendamento pendente salvo');
+    } catch (error) {
+        console.error('❌ Erro salvando agendamento pendente:', error);
+    }
+}
+
+// 🆕 Verificar se é seleção de profissional
+async isProfessionalSelection(text, contactId, userId) {
+    try {
+        const { data: pending, error } = await supabaseAdmin
+            .from('pending_appointments')
+            .select('*')
+            .eq('contact_id', contactId)
+            .eq('user_id', userId)
+            .eq('status', 'awaiting_professional_selection')
+            .gt('expires_at', new Date().toISOString())
+            .single();
+
+        return !error && pending;
+    } catch (error) {
+        return false;
+    }
+}
+
+// 🆕 Processar seleção de profissional
+async handleProfessionalSelection(text, contactId, userId) {
+    try {
+        // Buscar agendamento pendente
+        const { data: pending, error } = await supabaseAdmin
+            .from('pending_appointments')
+            .select('*')
+            .eq('contact_id', contactId)
+            .eq('user_id', userId)
+            .eq('status', 'awaiting_professional_selection')
+            .single();
+
+        if (error || !pending) {
+            return "❌ *Sessão expirada.* Por favor, solicite um novo agendamento.";
+        }
+
+        const professionals = pending.professionals;
+        let selectedProfessional = null;
+
+        // 🎯 Detectar seleção por número (1, 2, 3...)
+        const numberMatch = text.match(/^(\d+)$/);
+        if (numberMatch) {
+            const index = parseInt(numberMatch[1]) - 1;
+            if (index >= 0 && index < professionals.length) {
+                selectedProfessional = professionals[index];
+            }
+        }
+
+        // 🎯 Detectar seleção por nome
+        if (!selectedProfessional) {
+            const textLower = text.toLowerCase();
+            selectedProfessional = professionals.find(prof => 
+                prof.name.toLowerCase().includes(textLower) ||
+                textLower.includes(prof.name.toLowerCase())
+            );
+        }
+
+        if (!selectedProfessional) {
+            return `❌ *Profissional não encontrado.*\n\n${this.formatProfessionalsList(professionals)}`;
+        }
+
+        // 🎯 Processar agendamento com profissional selecionado
+        const analysis = pending.analysis;
+        const result = await this.handleSchedulingIntent(analysis, { id: contactId }, userId, selectedProfessional);
+
+        // 🧹 Limpar agendamento pendente
+        await supabaseAdmin
+            .from('pending_appointments')
+            .delete()
+            .eq('id', pending.id);
+
+        return result;
+
+    } catch (error) {
+        console.error('❌ Erro processando seleção:', error);
+        return "❌ *Erro interno.* Tente novamente em alguns minutos.";
+    }
+}
+
+
 
 }
 
