@@ -664,15 +664,15 @@ async handleProfessionalSelection(text, contactId, userId) {
             return `❌ Não consegui identificar o profissional "${text}". Por favor, responda com o número (1, 2, 3...) ou nome completo.`;
         }
 
-        // 🎯 AGENDAR COM PROFISSIONAL SELECIONADO
-        const analysis = {
-            intention: 'scheduling',
-            confidence: 0.95,
-            originalMessage: pending.message_content
-        };
+        // 🆕 USAR A ANÁLISE ORIGINAL DO BANCO, NÃO A ATUAL!
+        const originalAnalysis = JSON.parse(pending.analysis);
+        
+        console.log('🗓️ Processando agendamento com IA...');
+        console.log('📊 Análise original:', originalAnalysis);
+        console.log('👤 Profissional selecionado:', selectedProfessional.name);
 
         const contact = await this.getContactById(contactId);
-        const appointmentResult = await this.handleSchedulingIntent(analysis, contact, userId, selectedProfessional);
+        const appointmentResult = await this.handleSchedulingIntent(originalAnalysis, contact, userId, selectedProfessional);
 
         // 🧹 Limpar agendamento pendente
         await supabaseAdmin
