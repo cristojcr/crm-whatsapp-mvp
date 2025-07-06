@@ -369,18 +369,21 @@ ${selectedProfessional.specialty ? `🎯 Especialidade: ${selectedProfessional.s
         // 🌐 CHAMAR API DO GOOGLE CALENDAR
         console.log('📡 Criando evento no Google Calendar...');
         // ✅ SUBSTITUIR por chamada para sua API existente:
-        const response = await fetch(`http://localhost:3001/api/calendar/create/${professionalId}`, {
+        const startDateTime = appointmentDate.toISOString();
+        const endDateTime = new Date(appointmentDate.getTime() + 60 * 60 * 1000).toISOString(); // +1 hora
+
+        const response = await fetch(`http://localhost:3001/api/calendar/create/${selectedProfessional.id}`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': req.headers.authorization // usar token do request
+                'Content-Type': 'application/json'
+                // ✅ SEM Authorization - chamada interna
             },
             body: JSON.stringify({
-                title: `Consulta - ${professionalName}`,
-                description: `Agendamento via IA WhatsApp CRM`,
+                title: eventTitle,
+                description: eventDescription,
                 startDateTime: startDateTime,
                 endDateTime: endDateTime,
-                attendeeEmail: contactEmail
+                attendees: []
             })
         });
 
