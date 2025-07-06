@@ -372,7 +372,8 @@ ${selectedProfessional.specialty ? `🎯 Especialidade: ${selectedProfessional.s
         const startDateTime = appointmentDate.toISOString();
         const endDateTime = new Date(appointmentDate.getTime() + 60 * 60 * 1000).toISOString(); // +1 hora
 
-        const response = await fetch(`http://localhost:3001/api/calendar/create/${selectedProfessional.id}`, {
+        const eventResult = await this.createCalendarEvent(professionalCalendar, contact, originalAnalysis);
+        return eventResult;
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
