@@ -404,7 +404,7 @@ ${selectedProfessional.specialty ? `🎯 Especialidade: ${selectedProfessional.s
                 user_id: userId,
                 contact_id: contact.id,
                 professional_id: selectedProfessional.id,
-                appointment_date: appointmentDate.toISOString(),
+                scheduled_at: appointmentDate.toISOString(),
                 status: 'confirmed',
                 google_event_id: eventResult.eventId,
                 title: eventTitle,
