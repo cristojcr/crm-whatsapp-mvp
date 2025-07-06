@@ -277,9 +277,24 @@ function extractDateTime(messageContent) {
 // FUNÇÃO: CONSTRUIR PROMPT DE ANÁLISE
 // ===============================================
 function buildAnalysisPrompt(messageContent, context) {
-  let prompt = `Analise a intenção desta mensagem de WhatsApp:
+  // 📅 ADICIONAR DATA ATUAL
+  const hoje = new Date();
+  const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  
+  const dataAtual = `${diasSemana[hoje.getDay()]}, ${hoje.getDate()} de ${meses[hoje.getMonth()]} de ${hoje.getFullYear()}`;
+  
+  let prompt = `CONTEXTO TEMPORAL: HOJE É ${dataAtual.toUpperCase()}
+
+Analise a intenção desta mensagem de WhatsApp:
 
 MENSAGEM: "${messageContent}"
+
+IMPORTANTE PARA AGENDAMENTOS:
+- Se disser "amanhã": calcule ${hoje.getDate() + 1}/${hoje.getMonth() + 1}/${hoje.getFullYear()}
+- Se disser "próxima segunda/terça/quarta/quinta/sexta/sábado/domingo": calcule o PRÓXIMO dia da semana mencionado
+- Se disser "semana que vem": adicione 7 dias à data atual
+- Para "próxima quarta-feira": se hoje é domingo (06/07), próxima quarta é 09/07
 
 TIPOS DE INTENÇÃO DISPONÍVEIS:
 `;
@@ -302,8 +317,16 @@ RETORNE APENAS UM JSON NO SEGUINTE FORMATO (sem markdown, sem backticks):
 {
   "intention": "tipo_de_intencao",
   "confidence": 0.95,
-  "reasoning": "explicacao_breve"
+  "reasoning": "explicacao_breve",
+  "dateTime": {
+    "suggestedDate": "YYYY-MM-DD",
+    "suggestedTime": "HH:MM",
+    "hasDateReference": true,
+    "hasTimeReference": true
+  }
 }
+
+CALCULE AS DATAS CORRETAMENTE baseado em hoje ser ${dataAtual}!
 
 IMPORTANTE: Retorne APENAS o JSON, sem texto adicional, sem markdown, sem \`\`\`json.`;
 
