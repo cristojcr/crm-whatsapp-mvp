@@ -272,14 +272,18 @@ function extractDateTime(messageContent) {
 // FUNÇÃO: CONSTRUIR PROMPT DE ANÁLISE
 // ===============================================
 function buildAnalysisPrompt(messageContent, context) {
-  // 📅 ADICIONAR DATA ATUAL
+  // 📅 CRIAR DATA ATUAL EM BRASÍLIA
   const agora = new Date();
+  const hoje = new Date(agora.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+  
   const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
   const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-  const hoje = new Date(agora.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+  
   const dataAtual = `${diasSemana[hoje.getDay()]}, ${hoje.getDate()} de ${meses[hoje.getMonth()]} de ${hoje.getFullYear()}`;
   
   let prompt = `CONTEXTO TEMPORAL: HOJE É ${dataAtual.toUpperCase()}
+  TIMEZONE: BRASÍLIA (GMT-3) - TODOS OS HORÁRIOS SÃO NO FUSO HORÁRIO DO BRASIL!
+  IMPORTANTE: Quando o usuário diz "9:15", é 9:15 da manhã NO BRASIL (GMT-3).
 
 Analise a intenção desta mensagem de WhatsApp:
 
@@ -288,11 +292,10 @@ MENSAGEM: "${messageContent}"
 IMPORTANTE PARA AGENDAMENTOS:
 - Se disser "amanhã": calcule ${hoje.getDate() + 1}/${hoje.getMonth() + 1}/${hoje.getFullYear()}
 - Se disser "próxima segunda/terça/quarta/quinta/sexta/sábado/domingo": calcule o PRÓXIMO dia da semana mencionado
-- Se disser "semana que vem": adicione 7 dias à data atual
+- TODOS OS HORÁRIOS SÃO EM BRASÍLIA (GMT-3)
 - Para "próxima segunda-feira": se hoje é domingo (06/07), próxima segunda é 08/07
 
-TIPOS DE INTENÇÃO DISPONÍVEIS:
-`;
+TIPOS DE INTENÇÃO DISPONÍVEIS:`;
 
   // Adicionar tipos de intenção
   Object.entries(INTENTION_TYPES).forEach(([key, description]) => {
