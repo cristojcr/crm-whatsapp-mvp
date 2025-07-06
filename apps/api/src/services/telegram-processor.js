@@ -499,12 +499,27 @@ async createCalendarEvent(professional, contact, analysis) {
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
         
         // 🔧 USAR HORÁRIO REAL DA IA
-        const suggestedDate = analysis.dateTime?.suggestedDate;
-        const suggestedTime = analysis.dateTime?.suggestedTime;
+    let suggestedDate = analysis.dateTime?.suggestedDate;
+    let suggestedTime = analysis.dateTime?.suggestedTime;
+
+    // Se não detectou data mas detectou hora, calcular data automaticamente
+    if (!suggestedDate && suggestedTime) {
+        const now = new Date();
+        const currentHour = now.getHours();
+        const requestedHour = parseInt(suggestedTime.split(':')[0]);
         
-        if (!suggestedDate || !suggestedTime) {
-            throw new Error('Data/hora não detectada na mensagem');
+        // Se horário já passou hoje, agendar para amanhã
+        if (requestedHour <= currentHour) {
+            now.setDate(now.getDate() + 1);
         }
+        
+        suggestedDate = now.toISOString().split('T')[0];
+        console.log('📅 Data calculada automaticamente:', suggestedDate);
+    }
+
+    if (!suggestedDate || !suggestedTime) {
+        throw new Error('Data/hora não detectada na mensagem');
+    }
         
         // 🔧 CONVERSÃO MANUAL BRASÍLIA → UTC
         // Brasília = UTC-3, então SOMA 3 horas para converter para UTC
