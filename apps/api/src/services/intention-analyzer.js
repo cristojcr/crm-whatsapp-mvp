@@ -273,10 +273,10 @@ function extractDateTime(messageContent) {
 // ===============================================
 function buildAnalysisPrompt(messageContent, context) {
   // 📅 ADICIONAR DATA ATUAL
-  const hoje = new Date();
+  const agora = new Date();
   const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
   const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-  
+  const hoje = new Date(agora.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
   const dataAtual = `${diasSemana[hoje.getDay()]}, ${hoje.getDate()} de ${meses[hoje.getMonth()]} de ${hoje.getFullYear()}`;
   
   let prompt = `CONTEXTO TEMPORAL: HOJE É ${dataAtual.toUpperCase()}
