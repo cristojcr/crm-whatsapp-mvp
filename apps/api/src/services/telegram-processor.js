@@ -518,7 +518,8 @@ Em caso de dúvidas, entre em contato! 😊`;
 
             // 🛠️ USAR DateTime do fuso horário "America/Sao_Paulo" via lib Luxon
             const { DateTime } = require('luxon');
-            const start = DateTime.fromISO(`${suggestedDate}T${suggestedTime}`, { zone: 'America/Sao_Paulo' });
+            // const start = DateTime.fromISO(`${suggestedDate}T${suggestedTime}`, { zone: 'America/Sao_Paulo' });
+            const start = DateTime.fromISO(`${suggestedDate}T${suggestedTime}`, { zone: 'UTC' });
             const end = start.plus({ minutes: 60 });
 
             const event = {
@@ -526,11 +527,13 @@ Em caso de dúvidas, entre em contato! 😊`;
                 description: `Agendamento via Telegram\nContato: ${contact.name}\nHorário Brasil: ${suggestedTime}`,
                 start: {
                     dateTime: start.toISO(), // mantém o fuso Brasil
-                    timeZone: 'America/Sao_Paulo'
+                    timeZone: 'UTC'
+                    // timeZone: 'America/Sao_Paulo'
                 },
                 end: {
                     dateTime: end.toISO(),
-                    timeZone: 'America/Sao_Paulo'
+                    // timeZone: 'America/Sao_Paulo'
+                    timeZone: 'UTC'
                 },
                 attendees: [{ email: professional.google_calendar_email }]
             };
