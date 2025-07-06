@@ -479,6 +479,7 @@ Em caso de dúvidas, entre em contato! 😊`;
     }
 
     // 📅 CRIAR EVENTO NO GOOGLE CALENDAR
+// ✅ NOVA FUNÇÃO createCalendarEvent() - CONVERSÃO MANUAL UTC
 async createCalendarEvent(professional, contact, analysis) {
     try {
         const { google } = require('googleapis');
@@ -497,57 +498,39 @@ async createCalendarEvent(professional, contact, analysis) {
         
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
         
-        // 🔧 USAR HORÁRIO REAL DA IA (não hardcoded)
-        const suggestedDate = analysis.dateTime?.suggestedDate;
-        const suggestedTime = analysis.dateTime?.suggestedTime;
-        
-        if (!suggestedDate || !suggestedTime) {
-            throw new Error('Data/hora não detectada na mensagem');
-        }
-        
-        // 🔧 CRIAR DATETIME CORRETO (sem .toISOString())
-        const eventDateTime = `${suggestedDate}T${suggestedTime}:00-03:00`;
-        
-        // Calcular fim (1 hora depois)
-        const startDate = new Date(`${suggestedDate}T${suggestedTime}:00`);
-        const endDate = new Date(startDate.getTime() + (60 * 60 * 1000));
-        const endDateTime = `${suggestedDate}T${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
-        
-        console.log('📅 Agendando para:', eventDateTime, 'até', endDateTime);
-        
-        // ✅ CORRIGIDO (com logs e timezone):
         // 🔧 USAR HORÁRIO REAL DA IA
         const suggestedDate = analysis.dateTime?.suggestedDate;
         const suggestedTime = analysis.dateTime?.suggestedTime;
-
-        console.log('🕐 Timezone do servidor:', new Date().toISOString());
-        console.log('📊 Data/hora da IA:', suggestedDate, suggestedTime);
-
+        
         if (!suggestedDate || !suggestedTime) {
             throw new Error('Data/hora não detectada na mensagem');
         }
-
-        // 🔧 CRIAR DATETIME COM TIMEZONE BRASÍLIA
-        const eventDateTime = `${suggestedDate}T${suggestedTime}:00-03:00`;
-
-        // Calcular fim (1 hora depois)  
-        const startDate = new Date(`${suggestedDate}T${suggestedTime}:00-03:00`);
-        const endDate = new Date(startDate.getTime() + (60 * 60 * 1000));
-        const endTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
-        const endDateTime = `${suggestedDate}T${endTime}:00-03:00`;
-
-        console.log('📅 Agendando para:', eventDateTime, 'até', endDateTime);
-
+        
+        // 🔧 CONVERSÃO MANUAL BRASÍLIA → UTC
+        // Brasília = UTC-3, então SOMA 3 horas para converter para UTC
+        const [hour, minute] = suggestedTime.split(':').map(Number);
+        
+        // Criar data em Brasília
+        const brasiliaDate = new Date(`${suggestedDate}T${suggestedTime}:00`);
+        
+        // Converter para UTC (adicionar 3 horas)
+        const utcStartDate = new Date(brasiliaDate.getTime() + (3 * 60 * 60 * 1000));
+        const utcEndDate = new Date(utcStartDate.getTime() + (60 * 60 * 1000)); // +1 hora
+        
+        console.log('🇧🇷 Horário Brasília:', `${suggestedDate} ${suggestedTime}`);
+        console.log('🌍 Horário UTC:', utcStartDate.toISOString());
+        console.log('📅 Enviando para Google Calendar como UTC');
+        
         const event = {
             summary: `Consulta - ${contact.name}`,
-            description: `Agendamento via Telegram\nContato: ${contact.name}`,
+            description: `Agendamento via Telegram\nContato: ${contact.name}\nHorário Brasil: ${suggestedTime}`,
             start: {
-                dateTime: eventDateTime,  // ✅ COM -03:00
-                timeZone: 'America/Sao_Paulo'
+                dateTime: utcStartDate.toISOString(), // ✅ UTC CORRETO
+                timeZone: 'UTC' // ✅ EXPLÍCITO UTC
             },
             end: {
-                dateTime: endDateTime,    // ✅ COM -03:00
-                timeZone: 'America/Sao_Paulo'
+                dateTime: utcEndDate.toISOString(),   // ✅ UTC CORRETO  
+                timeZone: 'UTC' // ✅ EXPLÍCITO UTC
             },
             attendees: [
                 { email: professional.google_calendar_email }
@@ -564,7 +547,7 @@ async createCalendarEvent(professional, contact, analysis) {
         return `✅ Agendamento confirmado!
 
 📅 Data: ${new Date(suggestedDate).toLocaleDateString('pt-BR')}
-🕐 Horário: ${suggestedTime}
+🕐 Horário: ${suggestedTime} (Brasília)
 👨‍⚕️ Profissional: ${professional.name}
 📧 Contato: ${professional.email}
 
