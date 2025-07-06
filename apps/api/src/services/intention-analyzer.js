@@ -275,11 +275,18 @@ function buildAnalysisPrompt(messageContent, context) {
   // 📅 CRIAR DATA ATUAL EM BRASÍLIA
   const agora = new Date();
   const hoje = new Date(agora.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+
+  // 🔍 LOGS DE DEBUG
+  console.log('🕐 Railway (UTC):', agora.toISOString());
+  console.log('🇧🇷 Convertido (Brasília):', hoje.toISOString());
+  console.log('🌎 Timezone detectado:', Intl.DateTimeFormat().resolvedOptions().timeZone);
   
   const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
   const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   
   const dataAtual = `${diasSemana[hoje.getDay()]}, ${hoje.getDate()} de ${meses[hoje.getMonth()]} de ${hoje.getFullYear()}`;
+
+  console.log('📅 Data enviada para IA:', dataAtual);
   
   let prompt = `CONTEXTO TEMPORAL: HOJE É ${dataAtual.toUpperCase()}
   TIMEZONE: BRASÍLIA (GMT-3) - TODOS OS HORÁRIOS SÃO NO FUSO HORÁRIO DO BRASIL!
