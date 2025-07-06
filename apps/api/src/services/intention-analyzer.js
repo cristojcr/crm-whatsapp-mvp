@@ -294,7 +294,7 @@ IMPORTANTE PARA AGENDAMENTOS:
 - Se disser "amanhã": calcule ${hoje.getDate() + 1}/${hoje.getMonth() + 1}/${hoje.getFullYear()}
 - Se disser "próxima segunda/terça/quarta/quinta/sexta/sábado/domingo": calcule o PRÓXIMO dia da semana mencionado
 - Se disser "semana que vem": adicione 7 dias à data atual
-- Para "próxima quarta-feira": se hoje é domingo (06/07), próxima quarta é 09/07
+- Para "próxima segunda-feira": se hoje é domingo (06/07), próxima segunda é 08/07
 
 TIPOS DE INTENÇÃO DISPONÍVEIS:
 `;
@@ -332,7 +332,6 @@ IMPORTANTE: Retorne APENAS o JSON, sem texto adicional, sem markdown, sem \`\`\`
 
   return prompt;
 }
-
 // ===============================================
 // FUNÇÃO: ANÁLISE COM PREFERÊNCIAS PROFISSIONAIS
 // ===============================================
