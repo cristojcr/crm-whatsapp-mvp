@@ -530,9 +530,9 @@ router.post('/create/:professionalId', authenticateToken, async (req, res) => {
 
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-        // 🔧 CONVERSÃO MANUAL BRASÍLIA → UTC
-        const startDate = new Date(startDateTime);
-        const endDate = new Date(endDateTime);
+        // 🔧 SEM CONVERSÃO - DEIXAR GOOGLE CALENDAR GERENCIAR
+        console.log('🇧🇷 Horário Brasília recebido:', startDateTime);
+        console.log('🇧🇷 Horário final enviado:', endDateTime);
 
         // Converter para UTC (adicionar 3 horas)
         const utcStartDate = new Date(startDate.getTime() + (3 * 60 * 60 * 1000));
@@ -547,12 +547,12 @@ router.post('/create/:professionalId', authenticateToken, async (req, res) => {
             summary: title || 'Consulta Agendada',
             description: description || 'Agendamento feito via IA do CRM',
             start: {
-                dateTime: utcStartDate.toISOString(),  // ✅ UTC CORRETO
-                timeZone: 'UTC'
+                dateTime: startDateTime,
+                timeZone: 'America/Sao_Paulo'
             },
             end: {
-                dateTime: utcEndDate.toISOString(),    // ✅ UTC CORRETO
-                timeZone: 'UTC'
+                dateTime: endDateTime,
+                timeZone: 'America/Sao_Paulo'
             },
             attendees: attendeeEmail ? [{ email: attendeeEmail }] : [],
             reminders: {
