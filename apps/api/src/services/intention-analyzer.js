@@ -142,6 +142,7 @@ async function analyze(messageContent, context = {}) {
       intention: parsed.intention,
       confidence: parseFloat(parsed.confidence),
       reasoning: parsed.reasoning || '',
+      dateTime: parsed.dateTime || null,
       provider: 'deepseek',
       timestamp: new Date().toISOString()
     };
@@ -325,6 +326,11 @@ RETORNE APENAS UM JSON NO SEGUINTE FORMATO (sem markdown, sem backticks):
     "hasTimeReference": true
   }
 }
+
+EXEMPLO DE CÁLCULO:
+- Hoje é ${dataAtual}
+- Se disser "próxima segunda": retorne "suggestedDate": "2025-07-08"
+- Se disser "amanhã": retorne "suggestedDate": "2025-07-07"
 
 CALCULE AS DATAS CORRETAMENTE baseado em hoje ser ${dataAtual}!
 
