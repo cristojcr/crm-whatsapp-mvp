@@ -506,7 +506,7 @@ async createCalendarEvent(professional, contact, analysis) {
         }
         
         // 🔧 CRIAR DATETIME CORRETO (sem .toISOString())
-        const eventDateTime = `${suggestedDate}T${suggestedTime}:00`;
+        const eventDateTime = `${suggestedDate}T${suggestedTime}:00-03:00`;
         
         // Calcular fim (1 hora depois)
         const startDate = new Date(`${suggestedDate}T${suggestedTime}:00`);
