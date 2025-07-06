@@ -481,84 +481,80 @@ Em caso de dúvidas, entre em contato! 😊`;
 
     // 📅 CRIAR EVENTO NO GOOGLE CALENDAR
     // ✅ NOVA FUNÇÃO createCalendarEvent() - CONVERSÃO MANUAL UTC
-    async createCalendarEvent(professional, contact, analysis) {
-        try {
-            const { google } = require('googleapis');
+async createCalendarEvent(professional, contact, analysis) {
+    try {
+        const { google } = require('googleapis');
+        
+        // Configurar OAuth2 com credenciais do profissional
+        const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
+        
+        oauth2Client.setCredentials({
+            access_token: professional.google_access_token,
+            refresh_token: professional.google_refresh_token
+        });
+        
+        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        
+        // Extrair data e hora sugeridas pela IA
+        let suggestedDate = analysis.dateTime?.suggestedDate;
+        let suggestedTime = analysis.dateTime?.suggestedTime;
 
-            const oauth2Client = new google.auth.OAuth2(
-                process.env.GOOGLE_CLIENT_ID,
-                process.env.GOOGLE_CLIENT_SECRET,
-                process.env.GOOGLE_REDIRECT_URI
-            );
-
-            oauth2Client.setCredentials({
-                access_token: professional.google_access_token,
-                refresh_token: professional.google_refresh_token
-            });
-
-            const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-
-            let suggestedDate = analysis.dateTime?.suggestedDate;
-            let suggestedTime = analysis.dateTime?.suggestedTime;
-
-            if (!suggestedDate && suggestedTime) {
-                const now = new Date();
-                const currentHour = now.getHours();
-                const requestedHour = parseInt(suggestedTime.split(':')[0]);
-                if (requestedHour <= currentHour) {
-                    now.setDate(now.getDate() + 1);
-                }
-                suggestedDate = now.toISOString().split('T')[0];
-                console.log('📅 Data calculada automaticamente:', suggestedDate);
-            }
-
-            if (!suggestedDate || !suggestedTime) {
-                throw new Error('Data/hora não detectada na mensagem');
-            }
-
-            // 🛠️ USAR DateTime do fuso horário "America/Sao_Paulo" via lib Luxon
-            const { DateTime } = require('luxon');
-            // const start = DateTime.fromISO(`${suggestedDate}T${suggestedTime}`, { zone: 'America/Sao_Paulo' });
-            const start = DateTime.fromISO(`${suggestedDate}T${suggestedTime}`, { zone: 'UTC' });
-            const end = start.plus({ minutes: 60 });
-
-            const event = {
-                summary: `Consulta - ${contact.name}`,
-                description: `Agendamento via Telegram\nContato: ${contact.name}\nHorário Brasil: ${suggestedTime}`,
-                start: {
-                    dateTime: start.toISO(), // mantém o fuso Brasil
-                    timeZone: 'UTC'
-                    // timeZone: 'America/Sao_Paulo'
-                },
-                end: {
-                    dateTime: end.toISO(),
-                    // timeZone: 'America/Sao_Paulo'
-                    timeZone: 'UTC'
-                },
-                attendees: [{ email: professional.google_calendar_email }]
-            };
-
-            const response = await calendar.events.insert({
-                calendarId: 'primary',
-                resource: event
-            });
-
-            console.log('✅ Evento criado:', response.data.id);
-
-            return `✅ Agendamento confirmado!
-
-    📅 Data: ${start.toFormat('dd/LL/yyyy')}
-    🕐 Horário: ${start.toFormat('HH:mm')} (Brasília)
-    👨‍⚕️ Profissional: ${professional.name}
-    📧 Contato: ${professional.email}
-
-    Você receberá uma confirmação por email. Até lá! 😊`;
-
-        } catch (error) {
-            console.error('❌ Erro criando evento:', error);
-            return "Agendamento processado! Entraremos em contato para confirmar horário.";
+        if (!suggestedDate || !suggestedTime) {
+            throw new Error('Data ou hora não detectada na análise');
         }
+        
+        // Montar objeto Date no horário original (fuso horário local - Brasília)
+        let appointmentDate = new Date(`${suggestedDate}T${suggestedTime}:00`);
+
+        // Somar 3 horas para converter para UTC (Google Calendar usa UTC)
+        let appointmentDateUtc = new Date(appointmentDate.getTime() + 3 * 60 * 60 * 1000);
+
+        // Calcular horário de término (+1 hora após início)
+        let appointmentEndUtc = new Date(appointmentDateUtc.getTime() + 60 * 60 * 1000);
+
+        // Preparar evento para o Google Calendar usando horários em UTC (sem timezone, pois já está ajustado)
+        const event = {
+            summary: `Consulta - ${contact.name}`,
+            description: `Agendamento via Telegram\nContato: ${contact.name}\nHorário solicitado (Horário Brasília): ${suggestedTime}`,
+            start: {
+                dateTime: appointmentDateUtc.toISOString(),
+                //timeZone: 'UTC' // Opcional, pois o ISO já está em UTC
+            },
+            end: {
+                dateTime: appointmentEndUtc.toISOString(),
+                //timeZone: 'UTC'
+            },
+            attendees: [
+                { email: professional.google_calendar_email }
+            ]
+        };
+
+        // Inserir evento no calendário
+        const response = await calendar.events.insert({
+            calendarId: 'primary',
+            resource: event
+        });
+
+        console.log('✅ Evento criado no Google Calendar:', response.data.id);
+
+        // Mensagem para usuário mostrando o horário original (sem a soma)
+        return `✅ Agendamento confirmado!
+
+📅 Data: ${new Date(suggestedDate).toLocaleDateString('pt-BR')}
+🕐 Horário: ${suggestedTime} (Horário Brasília)
+👨‍⚕️ Profissional: ${professional.name}
+
+Você receberá uma confirmação por email. Até lá! 😊`;
+
+    } catch (error) {
+        console.error('❌ Erro criando evento:', error);
+        return "Agendamento processado! Entraremos em contato para confirmar horário.";
     }
+}
 
     // 🔍 CONSULTAR DISPONIBILIDADE
     async processAvailabilityQuery(professional_preference, userId) {
