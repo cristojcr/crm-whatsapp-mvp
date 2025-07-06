@@ -522,30 +522,24 @@ async createCalendarEvent(professional, contact, analysis) {
     }
         
         // 🔧 CONVERSÃO MANUAL BRASÍLIA → UTC
-        // Brasília = UTC-3, então SOMA 3 horas para converter para UTC
-        const [hour, minute] = suggestedTime.split(':').map(Number);
-        
-        // Criar data em Brasília
-        const brasiliaDate = new Date(`${suggestedDate}T${suggestedTime}:00`);
-        
-        // Converter para UTC (adicionar 3 horas)
-        const utcStartDate = new Date(brasiliaDate.getTime() + (3 * 60 * 60 * 1000));
-        const utcEndDate = new Date(utcStartDate.getTime() + (60 * 60 * 1000)); // +1 hora
-        
-        console.log('🇧🇷 Horário Brasília:', `${suggestedDate} ${suggestedTime}`);
-        console.log('🌍 Horário UTC:', utcStartDate.toISOString());
-        console.log('📅 Enviando para Google Calendar como UTC');
-        
+        // 🔧 SEM CONVERSÃO - DIRETO BRASÍLIA
+        const eventDateTime = `${suggestedDate}T${suggestedTime}:00`;
+        const endTime = suggestedTime.split(':');
+        const endHour = (parseInt(endTime[0]) + 1).toString().padStart(2, '0');
+        const endDateTime = `${suggestedDate}T${endHour}:${endTime[1]}:00`;
+
+        console.log('🇧🇷 Agendando para:', eventDateTime);
+
         const event = {
             summary: `Consulta - ${contact.name}`,
             description: `Agendamento via Telegram\nContato: ${contact.name}\nHorário Brasil: ${suggestedTime}`,
             start: {
-                dateTime: utcStartDate.toISOString(), // ✅ UTC CORRETO
-                timeZone: 'UTC' // ✅ EXPLÍCITO UTC
+                dateTime: eventDateTime,
+                timeZone: 'America/Sao_Paulo'
             },
             end: {
-                dateTime: utcEndDate.toISOString(),   // ✅ UTC CORRETO  
-                timeZone: 'UTC' // ✅ EXPLÍCITO UTC
+                dateTime: endDateTime,
+                timeZone: 'America/Sao_Paulo'
             },
             attendees: [
                 { email: professional.google_calendar_email }
