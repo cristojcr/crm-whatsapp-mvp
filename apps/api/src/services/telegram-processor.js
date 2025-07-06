@@ -479,70 +479,79 @@ Em caso de dúvidas, entre em contato! 😊`;
     }
 
     // 📅 CRIAR EVENTO NO GOOGLE CALENDAR
-    async createCalendarEvent(professional, contact, analysis) {
-        try {
-            // Buscar Google Calendar API
-            const { google } = require('googleapis');
-            
-            // Configurar OAuth2
-            const oauth2Client = new google.auth.OAuth2(
-                process.env.GOOGLE_CLIENT_ID,
-                process.env.GOOGLE_CLIENT_SECRET,
-                process.env.GOOGLE_REDIRECT_URI
-            );
-            
-            oauth2Client.setCredentials({
-                access_token: professional.google_access_token,
-                refresh_token: professional.google_refresh_token
-            });
-            
-            const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-            
-            // Criar evento (horário padrão: amanhã 14h)
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(14, 0, 0, 0);
-            
-            const endTime = new Date(tomorrow);
-            endTime.setHours(15, 0, 0, 0);
-            
-            const event = {
-                summary: `Consulta - ${contact.name}`,
-                description: `Agendamento via Telegram\nContato: ${contact.name}`,
-                start: {
-                    dateTime: tomorrow.toISOString(),
-                    timeZone: 'America/Sao_Paulo'
-                },
-                end: {
-                    dateTime: endTime.toISOString(),
-                    timeZone: 'America/Sao_Paulo'
-                },
-                attendees: [
-                    { email: professional.google_calendar_email }
-                ]
-            };
-            
-            const response = await calendar.events.insert({
-                calendarId: 'primary',
-                resource: event
-            });
-            
-            console.log('✅ Evento criado:', response.data.id);
-            
-            return `✅ Agendamento confirmado!
-
-    📅 Data: ${tomorrow.toLocaleDateString('pt-BR')}
-    🕐 Horário: 14:00
-    👨‍⚕️ Profissional: ${professional.name}
-    📧 Contato: ${professional.email}
-
-    Você receberá uma confirmação por email. Até lá! 😊`;
-            
-        } catch (error) {
-            console.error('❌ Erro criando evento:', error);
-            return "Agendamento processado! Entraremos em contato para confirmar horário. 📞";
+async createCalendarEvent(professional, contact, analysis) {
+    try {
+        const { google } = require('googleapis');
+        
+        // Configurar OAuth2
+        const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
+        
+        oauth2Client.setCredentials({
+            access_token: professional.google_access_token,
+            refresh_token: professional.google_refresh_token
+        });
+        
+        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        
+        // 🔧 USAR HORÁRIO REAL DA IA (não hardcoded)
+        const suggestedDate = analysis.dateTime?.suggestedDate;
+        const suggestedTime = analysis.dateTime?.suggestedTime;
+        
+        if (!suggestedDate || !suggestedTime) {
+            throw new Error('Data/hora não detectada na mensagem');
         }
+        
+        // 🔧 CRIAR DATETIME CORRETO (sem .toISOString())
+        const eventDateTime = `${suggestedDate}T${suggestedTime}:00`;
+        
+        // Calcular fim (1 hora depois)
+        const startDate = new Date(`${suggestedDate}T${suggestedTime}:00`);
+        const endDate = new Date(startDate.getTime() + (60 * 60 * 1000));
+        const endDateTime = `${suggestedDate}T${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
+        
+        console.log('📅 Agendando para:', eventDateTime, 'até', endDateTime);
+        
+        const event = {
+            summary: `Consulta - ${contact.name}`,
+            description: `Agendamento via Telegram\nContato: ${contact.name}`,
+            start: {
+                dateTime: eventDateTime,  // ✅ SEM .toISOString()
+                timeZone: 'America/Sao_Paulo'
+            },
+            end: {
+                dateTime: endDateTime,    // ✅ SEM .toISOString()
+                timeZone: 'America/Sao_Paulo'
+            },
+            attendees: [
+                { email: professional.google_calendar_email }
+            ]
+        };
+        
+        const response = await calendar.events.insert({
+            calendarId: 'primary',
+            resource: event
+        });
+        
+        console.log('✅ Evento criado:', response.data.id);
+        
+        return `✅ Agendamento confirmado!
+
+📅 Data: ${new Date(suggestedDate).toLocaleDateString('pt-BR')}
+🕐 Horário: ${suggestedTime}
+👨‍⚕️ Profissional: ${professional.name}
+📧 Contato: ${professional.email}
+
+Você receberá uma confirmação por email. Até lá! 😊`;
+        
+    } catch (error) {
+        console.error('❌ Erro criando evento:', error);
+        return "Agendamento processado! Entraremos em contato para confirmar horário.";
     }
+}
 
     // 🔍 CONSULTAR DISPONIBILIDADE
     async processAvailabilityQuery(professional_preference, userId) {
