@@ -70,11 +70,14 @@ function cleanJsonResponse(response) {
     cleaned = cleaned.substring(0, cleaned.length - 3);
   }
   
-  return cleaned.trim();
+  // Remove espaços extras
+  cleaned = cleaned.trim();
+  
+  return cleaned;
 }
 
 // ===============================================
-// FUNÇÃO PRINCIPAL: ANÁLISE DE INTENÇÃO COM IA
+// FUNÇÃO: ANÁLISE COM IA (DEEPSEEK)
 // ===============================================
 async function analyze(messageContent, context = {}) {
   try {
@@ -128,21 +131,12 @@ async function analyze(messageContent, context = {}) {
     const cleanedResult = cleanJsonResponse(result);
     console.log('🧹 Resposta limpa:', cleanedResult);
 
-    // Parse do resultado JSON
     const parsed = JSON.parse(cleanedResult);
     
-    // Validar estrutura
-    if (!parsed.intention || !parsed.confidence) {
-      throw new Error('Estrutura de resposta inválida');
-    }
-
-    console.log(`✅ Intenção analisada: ${parsed.intention} (${parsed.confidence})`);
+    console.log('✅ Intenção analisada:', parsed.intention, `(${parsed.confidence})`);
     
     return {
-      intention: parsed.intention,
-      confidence: parseFloat(parsed.confidence),
-      reasoning: parsed.reasoning || '',
-      dateTime: parsed.dateTime || null,
+      ...parsed,
       provider: 'deepseek',
       timestamp: new Date().toISOString()
     };
@@ -327,17 +321,13 @@ RETORNE APENAS UM JSON NO SEGUINTE FORMATO (sem markdown, sem backticks):
   }
 }
 
-EXEMPLO DE CÁLCULO:
-- Hoje é ${dataAtual}
-- Se disser "próxima segunda": retorne "suggestedDate": "2025-07-08"
-- Se disser "amanhã": retorne "suggestedDate": "2025-07-07"
-
 CALCULE AS DATAS CORRETAMENTE baseado em hoje ser ${dataAtual}!
 
 IMPORTANTE: Retorne APENAS o JSON, sem texto adicional, sem markdown, sem \`\`\`json.`;
 
   return prompt;
 }
+
 // ===============================================
 // FUNÇÃO: ANÁLISE COM PREFERÊNCIAS PROFISSIONAIS
 // ===============================================
@@ -353,13 +343,21 @@ async function analyzeWithProfessionalPreference(message, contactId, companyId) 
       return basicAnalysis;
     }
     
-    // Extrair informações de data/hora
-    const dateTime = extractDateTime(message);
+    // 🔧 CORREÇÃO: USAR dateTime da IA, NÃO sobrescrever!
+    // Se a IA já retornou dateTime, usar ele. Senão, extrair localmente.
+    let dateTime = basicAnalysis.dateTime;
+    
+    if (!dateTime || (!dateTime.suggestedDate && !dateTime.suggestedTime)) {
+      console.log('⚠️ IA não retornou dateTime, extraindo localmente...');
+      dateTime = extractDateTime(message);
+    } else {
+      console.log('✅ Usando dateTime da IA:', dateTime);
+    }
     
     // Retornar análise enriquecida
     return {
       ...basicAnalysis,
-      dateTime: dateTime,
+      dateTime: dateTime, // Agora preserva o dateTime da IA
       professionalPreference: null, // Implementar busca de preferências depois
       contactId: contactId,
       companyId: companyId
@@ -367,6 +365,7 @@ async function analyzeWithProfessionalPreference(message, contactId, companyId) 
     
   } catch (error) {
     console.error('❌ Erro na análise com preferências:', error.message);
+    return await analyzeFallback(message);
   }
 }
 
