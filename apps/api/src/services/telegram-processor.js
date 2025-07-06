@@ -515,15 +515,38 @@ async createCalendarEvent(professional, contact, analysis) {
         
         console.log('📅 Agendando para:', eventDateTime, 'até', endDateTime);
         
+        // ✅ CORRIGIDO (com logs e timezone):
+        // 🔧 USAR HORÁRIO REAL DA IA
+        const suggestedDate = analysis.dateTime?.suggestedDate;
+        const suggestedTime = analysis.dateTime?.suggestedTime;
+
+        console.log('🕐 Timezone do servidor:', new Date().toISOString());
+        console.log('📊 Data/hora da IA:', suggestedDate, suggestedTime);
+
+        if (!suggestedDate || !suggestedTime) {
+            throw new Error('Data/hora não detectada na mensagem');
+        }
+
+        // 🔧 CRIAR DATETIME COM TIMEZONE BRASÍLIA
+        const eventDateTime = `${suggestedDate}T${suggestedTime}:00-03:00`;
+
+        // Calcular fim (1 hora depois)  
+        const startDate = new Date(`${suggestedDate}T${suggestedTime}:00-03:00`);
+        const endDate = new Date(startDate.getTime() + (60 * 60 * 1000));
+        const endTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
+        const endDateTime = `${suggestedDate}T${endTime}:00-03:00`;
+
+        console.log('📅 Agendando para:', eventDateTime, 'até', endDateTime);
+
         const event = {
             summary: `Consulta - ${contact.name}`,
             description: `Agendamento via Telegram\nContato: ${contact.name}`,
             start: {
-                dateTime: eventDateTime,  // ✅ SEM .toISOString()
+                dateTime: eventDateTime,  // ✅ COM -03:00
                 timeZone: 'America/Sao_Paulo'
             },
             end: {
-                dateTime: endDateTime,    // ✅ SEM .toISOString()
+                dateTime: endDateTime,    // ✅ COM -03:00
                 timeZone: 'America/Sao_Paulo'
             },
             attendees: [
