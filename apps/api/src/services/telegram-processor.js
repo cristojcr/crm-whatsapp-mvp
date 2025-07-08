@@ -56,7 +56,7 @@ class TelegramProcessor {
             
             // Analisar com IA
             const intentionAnalyzer = require('./intention-analyzer');
-            const analysis = await intentionAnalyzer.analyzeWithProfessionalPreference(text, contact.id, userId);
+            const analysis = await intentionAnalyzer.analyzeWithProfessionalPreferenceWithContext(text, contact.id, userId);
             
             console.log('✅ Análise IA:', analysis);
             
@@ -81,6 +81,18 @@ class TelegramProcessor {
             } else if (await this.isProfessionalSelection(text, contact.id, userId)) {
                 // 🆕 FASE 3: Usuário está escolhendo profissional
                 responseText = await this.handleProfessionalSelection(text, contact.id, userId);
+            } else if (await this.isProfessionalSelection(text, contact.id, userId)) {
+                // 🆕 FASE 3: Usuário está escolhendo profissional
+                responseText = await this.handleProfessionalSelection(text, contact.id, userId);
+            } else if (analysis.intention === 'rescheduling') {
+                // 🆕 REMARCAÇÃO AUTOMÁTICA
+                responseText = await this.handleReschedulingIntent(analysis, contact, userId);
+            } else if (analysis.intention === 'inquiry') {
+                // 🆕 CONSULTAS SOBRE AGENDAMENTOS
+                responseText = await this.handleInquiryIntent(analysis, contact, userId);
+            } else if (analysis.intention === 'cancellation') {
+                // 🆕 CANCELAMENTOS
+                responseText = await this.handleCancellationIntent(analysis, contact, userId);
             } else {
                 responseText = await this.handleGeneralResponse(analysis, text);
             }
@@ -335,23 +347,29 @@ ${selectedProfessional.specialty ? `🎯 **Especialidade:** ${selectedProfession
 
         console.log('✅ Calendário do profissional encontrado:', professionalCalendar.google_calendar_email);
 
-        // 📅 EXTRAIR DATA/HORA da análise IA
-        const { dateTime } = analysis;
-        if (!dateTime || (!dateTime.suggestedDate && !dateTime.suggestedTime)) {
+        // 📅 EXTRAIR DATA/HORA da análise IA (compatível com ambas estruturas)
+        const dateTimeInfo = analysis.extracted_info || analysis.dateTime || {};
+        const extractedDate = dateTimeInfo.date || dateTimeInfo.suggestedDate;
+        const extractedTime = dateTimeInfo.time || dateTimeInfo.suggestedTime;
+
+        if (!extractedDate && !extractedTime) {
             return "❌ Não consegui identificar a data e hora desejada. Por favor, informe quando gostaria de agendar.";
         }
 
+        console.log('🗓️ Data extraída:', extractedDate);
+        console.log('🕐 Hora extraída:', extractedTime);
+
         // 🕐 PROCESSAR DATA E HORA
         let appointmentDate = new Date();
-        
+
         // Data sugerida pela IA
-        if (dateTime.suggestedDate) {
-            appointmentDate = new Date(dateTime.suggestedDate);
+        if (extractedDate) {
+            appointmentDate = new Date(extractedDate);
         }
-        
+
         // Hora sugerida pela IA
-        if (dateTime.suggestedTime) {
-            const [hours, minutes] = dateTime.suggestedTime.split(':');
+        if (extractedTime) {
+            const [hours, minutes] = extractedTime.split(':');
             appointmentDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         }
 
@@ -372,8 +390,8 @@ ${selectedProfessional.specialty ? `🎯 Especialidade: ${selectedProfessional.s
         const startDateTime = appointmentDate.toISOString();
         const endDateTime = new Date(appointmentDate.getTime() + 60 * 60 * 1000).toISOString(); // +1 hora
 
-        const eventResult = await this.createCalendarEvent(professionalCalendar, contact, originalAnalysis);
-        return eventResult;
+        // 🌐 CHAMAR API DO GOOGLE CALENDAR
+        const response = await fetch(`http://localhost:3001/api/calendar/create/${selectedProfessional.id}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -841,7 +859,330 @@ async getContactById(contactId) {
     }
 }
 
+// 🆕 FUNÇÃO: Consultar agendamentos existentes
+async handleInquiryIntent(analysis, contact, userId) {
+    try {
+        console.log('📋 Consultando agendamentos do cliente...');
 
+        // Buscar agendamentos futuros
+        const { data: upcomingAppointments, error } = await supabaseAdmin
+            .from('appointments')
+            .select(`
+                id,
+                scheduled_at,
+                status,
+                title,
+                professionals(name, specialty)
+            `)
+            .eq('contact_id', contact.id)
+            .gte('scheduled_at', new Date().toISOString())
+            .order('scheduled_at', { ascending: true });
+
+        if (error) {
+            console.error('❌ Erro buscando agendamentos:', error);
+            return "❌ Erro ao consultar seus agendamentos. Tente novamente.";
+        }
+
+        if (!upcomingAppointments || upcomingAppointments.length === 0) {
+            return "📅 *Você não tem consultas agendadas no momento.*\n\n💬 Gostaria de agendar uma nova consulta?";
+        }
+
+        let responseText = `📅 *Suas próximas consultas:*\n\n`;
+
+        upcomingAppointments.forEach((apt, index) => {
+            const date = new Date(apt.scheduled_at);
+            const dateStr = date.toLocaleDateString('pt-BR', { 
+                weekday: 'long', 
+                day: '2-digit', 
+                month: 'long' 
+            });
+            const timeStr = date.toLocaleTimeString('pt-BR', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            const professional = apt.professionals?.name || 'Profissional não especificado';
+            const specialty = apt.professionals?.specialty || '';
+
+            responseText += `${index + 1}. **${dateStr}** às **${timeStr}**\n`;
+            responseText += `👨‍⚕️ **${professional}**${specialty ? ` - ${specialty}` : ''}\n`;
+            responseText += `📋 Status: ${apt.status}\n\n`;
+        });
+
+        responseText += `💬 *Precisa remarcar ou cancelar alguma consulta? É só me falar!*`;
+
+        return responseText;
+
+    } catch (error) {
+        console.error('❌ Erro na consulta de agendamentos:', error);
+        return "❌ Erro ao consultar agendamentos. Tente novamente.";
+    }
+}
+
+// 🆕 FUNÇÃO: Remarcação automática
+async handleReschedulingIntent(analysis, contact, userId) {
+    try {
+        console.log('🔄 Processando remarcação automática...');
+
+        // 1. 🔍 BUSCAR AGENDAMENTOS FUTUROS DO CLIENTE
+        const { data: appointments, error: appointmentsError } = await supabaseAdmin
+            .from('appointments')
+            .select(`
+                id,
+                scheduled_at,
+                status,
+                title,
+                google_event_id,
+                professionals(id, name, specialty, google_calendar_id, google_access_token, google_refresh_token)
+            `)
+            .eq('contact_id', contact.id)
+            .gte('scheduled_at', new Date().toISOString())
+            .eq('status', 'confirmed')
+            .order('scheduled_at', { ascending: true });
+
+        if (appointmentsError || !appointments || appointments.length === 0) {
+            return "📅 *Você não tem consultas confirmadas para remarcar.*\n\n💬 Gostaria de agendar uma nova consulta?";
+        }
+
+        // 2. 🎯 IDENTIFICAR QUAL AGENDAMENTO REMARCAR
+        let appointmentToReschedule = appointments[0]; // Por padrão, a próxima consulta
+
+        // Se há referência específica na mensagem, tentar identificar
+        if (analysis.extracted_info?.appointment_to_modify) {
+            // Lógica para identificar agendamento específico baseado na descrição
+            // Por enquanto, usar o primeiro (próximo agendamento)
+        }
+
+        // 3. 📅 VERIFICAR SE NOVA DATA/HORA FOI ESPECIFICADA
+        const newDate = analysis.extracted_info?.date || analysis.dateTime?.suggestedDate;
+        const newTime = analysis.extracted_info?.time || analysis.dateTime?.suggestedTime;
+
+        if (!newDate && !newTime) {
+            // Mostrar agendamento atual e pedir nova data
+            const currentDate = new Date(appointmentToReschedule.scheduled_at);
+            const dateStr = currentDate.toLocaleDateString('pt-BR', { 
+                weekday: 'long', 
+                day: '2-digit', 
+                month: 'long' 
+            });
+            const timeStr = currentDate.toLocaleTimeString('pt-BR', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            const professional = appointmentToReschedule.professionals?.name || 'Profissional';
+
+            return `🔄 *Remarcação de consulta*\n\n📅 **Consulta atual:**\n${dateStr} às ${timeStr}\n👨‍⚕️ ${professional}\n\n💬 *Para quando gostaria de remarcar?*\nEx: "Para segunda às 15h" ou "Para dia 20 às 10h"`;
+        }
+
+        // 4. 🗓️ PROCESSAR NOVA DATA/HORA
+        let newDateTime = new Date();
+        
+        if (newDate) {
+            newDateTime = new Date(newDate);
+        }
+        
+        if (newTime) {
+            const [hours, minutes] = newTime.split(':');
+            newDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        }
+
+        // 5. 🔄 FAZER A REMARCAÇÃO
+        const professional = appointmentToReschedule.professionals;
+        
+        // 5.1. Deletar evento antigo do Google Calendar
+        if (appointmentToReschedule.google_event_id && professional?.google_access_token) {
+            try {
+                await this.deleteGoogleCalendarEvent(
+                    professional.google_access_token,
+                    appointmentToReschedule.google_event_id
+                );
+                console.log('🗑️ Evento antigo deletado do Google Calendar');
+            } catch (error) {
+                console.error('⚠️ Erro deletando evento antigo:', error);
+                // Continua mesmo se não conseguir deletar
+            }
+        }
+
+        // 5.2. Criar novo evento no Google Calendar
+        const newEventData = {
+            title: appointmentToReschedule.title,
+            description: `👤 Paciente: ${contact.name || contact.phone}
+📞 Telefone: ${contact.phone}
+
+👨‍⚕️ Profissional: ${professional?.name}
+${professional?.specialty ? `🎯 Especialidade: ${professional.specialty}` : ''}
+
+🔄 REMARCADO via IA WhatsApp CRM
+⏰ Remarcado em: ${new Date().toLocaleString('pt-BR')}`,
+            startDateTime: newDateTime.toISOString(),
+            endDateTime: new Date(newDateTime.getTime() + 60 * 60 * 1000).toISOString() // +1 hora
+        };
+
+        let newGoogleEventId = null;
+        try {
+            const calendarResponse = await fetch(`http://localhost:3001/api/calendar/create/${professional.id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(newEventData)
+            });
+
+            const calendarResult = await calendarResponse.json();
+            if (calendarResult.success) {
+                newGoogleEventId = calendarResult.eventId;
+                console.log('✅ Novo evento criado no Google Calendar:', newGoogleEventId);
+            }
+        } catch (error) {
+            console.error('❌ Erro criando novo evento:', error);
+            return "❌ Erro ao remarcar no Google Calendar. Tente novamente.";
+        }
+
+        // 5.3. Atualizar no banco de dados
+        const { error: updateError } = await supabaseAdmin
+            .from('appointments')
+            .update({
+                scheduled_at: newDateTime.toISOString(),
+                google_event_id: newGoogleEventId,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', appointmentToReschedule.id);
+
+        if (updateError) {
+            console.error('❌ Erro atualizando agendamento:', updateError);
+            return "❌ Erro ao atualizar agendamento. Tente novamente.";
+        }
+
+        // 6. ✅ CONFIRMAR REMARCAÇÃO
+        const newDateStr = newDateTime.toLocaleDateString('pt-BR', { 
+            weekday: 'long', 
+            day: '2-digit', 
+            month: 'long' 
+        });
+        const newTimeStr = newDateTime.toLocaleTimeString('pt-BR', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+
+        return `✅ *Consulta remarcada com sucesso!*
+
+👨‍⚕️ *Profissional:* ${professional?.name}
+${professional?.specialty ? `🎯 *Especialidade:* ${professional.specialty}` : ''}
+📅 *Nova data:* ${newDateStr}
+🕐 *Novo horário:* ${newTimeStr}
+
+📝 *O evento foi atualizado no Google Calendar.*
+📱 *Você receberá lembretes automáticos.*
+
+Em caso de dúvidas, entre em contato! 😊`;
+
+    } catch (error) {
+        console.error('❌ Erro na remarcação:', error);
+        return "❌ Erro ao processar remarcação. Tente novamente ou entre em contato diretamente.";
+    }
+}
+
+// 🆕 FUNÇÃO: Cancelamento de consultas
+async handleCancellationIntent(analysis, contact, userId) {
+    try {
+        console.log('❌ Processando cancelamento...');
+
+        // Buscar agendamentos futuros
+        const { data: appointments, error } = await supabaseAdmin
+            .from('appointments')
+            .select(`
+                id,
+                scheduled_at,
+                status,
+                title,
+                google_event_id,
+                professionals(name, specialty, google_access_token)
+            `)
+            .eq('contact_id', contact.id)
+            .gte('scheduled_at', new Date().toISOString())
+            .eq('status', 'confirmed')
+            .order('scheduled_at', { ascending: true });
+
+        if (error || !appointments || appointments.length === 0) {
+            return "📅 *Você não tem consultas confirmadas para cancelar.*";
+        }
+
+        // Por simplicidade, cancelar a próxima consulta
+        const appointmentToCancel = appointments[0];
+        const professional = appointmentToCancel.professionals;
+
+        // Deletar do Google Calendar
+        if (appointmentToCancel.google_event_id && professional?.google_access_token) {
+            try {
+                await this.deleteGoogleCalendarEvent(
+                    professional.google_access_token,
+                    appointmentToCancel.google_event_id
+                );
+            } catch (error) {
+                console.error('⚠️ Erro deletando do Google Calendar:', error);
+            }
+        }
+
+        // Atualizar status no banco
+        const { error: updateError } = await supabaseAdmin
+            .from('appointments')
+            .update({
+                status: 'cancelled',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', appointmentToCancel.id);
+
+        if (updateError) {
+            console.error('❌ Erro cancelando agendamento:', updateError);
+            return "❌ Erro ao cancelar. Tente novamente.";
+        }
+
+        const date = new Date(appointmentToCancel.scheduled_at);
+        const dateStr = date.toLocaleDateString('pt-BR', { 
+            weekday: 'long', 
+            day: '2-digit', 
+            month: 'long' 
+        });
+        const timeStr = date.toLocaleTimeString('pt-BR', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+
+        return `✅ *Consulta cancelada com sucesso!*
+
+📅 *Consulta cancelada:* ${dateStr} às ${timeStr}
+👨‍⚕️ *Profissional:* ${professional?.name}
+
+📝 *O evento foi removido do Google Calendar.*
+
+💬 *Precisa agendar uma nova consulta? É só me falar!*`;
+
+    } catch (error) {
+        console.error('❌ Erro no cancelamento:', error);
+        return "❌ Erro ao cancelar. Tente novamente.";
+    }
+}
+
+// 🆕 FUNÇÃO: Deletar evento do Google Calendar
+async deleteGoogleCalendarEvent(accessToken, eventId) {
+    try {
+        const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Google Calendar API error: ${response.status}`);
+        }
+
+        console.log('🗑️ Evento deletado do Google Calendar:', eventId);
+        return true;
+    } catch (error) {
+        console.error('❌ Erro deletando evento:', error);
+        throw error;
+    }
+}
 
 }
 

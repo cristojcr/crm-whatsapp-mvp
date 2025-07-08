@@ -590,4 +590,49 @@ router.post('/create/:professionalId', authenticateToken, async (req, res) => {
     }
 });
 
+// 🆕 ROTA: Deletar evento (OPCIONAL - pode usar a função direta acima)
+router.delete('/delete/:professionalId/:eventId', async (req, res) => {
+    try {
+        const { professionalId, eventId } = req.params;
+
+        // Buscar tokens do profissional
+        const { data: professional, error } = await supabaseAdmin
+            .from('professionals')
+            .select('google_access_token, google_refresh_token')
+            .eq('id', professionalId)
+            .single();
+
+        if (error || !professional?.google_access_token) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Profissional não tem Google Calendar conectado' 
+            });
+        }
+
+        // Deletar evento
+        const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${professional.google_access_token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Erro na API do Google Calendar');
+        }
+
+        res.json({ 
+            success: true, 
+            message: 'Evento deletado com sucesso' 
+        });
+
+    } catch (error) {
+        console.error('❌ Erro deletando evento:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Erro interno do servidor' 
+        });
+    }
+});
+
 module.exports = router;
