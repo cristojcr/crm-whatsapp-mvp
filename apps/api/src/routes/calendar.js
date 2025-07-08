@@ -600,7 +600,7 @@ router.delete('/delete/:professionalId/:eventId', async (req, res) => {
             .from('professionals')
             .select('google_access_token, google_refresh_token')
             .eq('id', professionalId)
-            .single();
+            .single();s
 
         if (error || !professional?.google_access_token) {
             return res.status(400).json({ 
