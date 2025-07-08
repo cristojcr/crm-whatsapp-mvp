@@ -379,6 +379,250 @@ async function analyzeWithProfessionalPreference(message, contactId, companyId) 
   }
 }
 
+// 🆕 FUNÇÃO: Buscar contexto histórico completo
+async function getClientHistoricalContext(contactId, userId) {
+    try {
+        console.log('🧠 Buscando contexto histórico do cliente...');
+        
+        // Importar supabaseAdmin (ajustar path conforme sua estrutura)
+        const { supabase: supabaseAdmin } = require('../config/supabaseAdmin');
+
+        // 1. 📱 HISTÓRICO DE MENSAGENS (últimas 10 mensagens)
+        const { data: recentMessages, error: messagesError } = await supabaseAdmin
+            .from('messages')
+            .select(`
+                content, 
+                sender_type, 
+                created_at,
+                metadata
+            `)
+            .eq('contact_id', contactId)
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+        // 2. 📅 AGENDAMENTOS FUTUROS (próximos 30 dias)
+        const futureDate = new Date();
+        futureDate.setDate(futureDate.getDate() + 30);
+
+        const { data: upcomingAppointments, error: upcomingError } = await supabaseAdmin
+            .from('appointments')
+            .select(`
+                scheduled_at,
+                status,
+                title,
+                professionals(name, specialty)
+            `)
+            .eq('contact_id', contactId)
+            .gte('scheduled_at', new Date().toISOString())
+            .lte('scheduled_at', futureDate.toISOString())
+            .order('scheduled_at', { ascending: true });
+
+        // 3. 📋 HISTÓRICO DE AGENDAMENTOS (últimos 90 dias)
+        const pastDate = new Date();
+        pastDate.setDate(pastDate.getDate() - 90);
+
+        const { data: pastAppointments, error: pastError } = await supabaseAdmin
+            .from('appointments')
+            .select(`
+                scheduled_at,
+                status,
+                title,
+                professionals(name, specialty)
+            `)
+            .eq('contact_id', contactId)
+            .lt('scheduled_at', new Date().toISOString())
+            .gte('scheduled_at', pastDate.toISOString())
+            .order('scheduled_at', { ascending: false })
+            .limit(5);
+
+        // 4. 👤 PERFIL DO CLIENTE
+        const { data: clientProfile, error: profileError } = await supabaseAdmin
+            .from('contacts')
+            .select('name, phone, created_at')
+            .eq('id', contactId)
+            .single();
+
+        // 5. 🔄 FORMATIZAR CONTEXTO PARA IA
+        return formatContextForAI({
+            clientProfile: clientProfile || {},
+            recentMessages: recentMessages || [],
+            upcomingAppointments: upcomingAppointments || [],
+            pastAppointments: pastAppointments || []
+        });
+
+    } catch (error) {
+        console.error('❌ Erro buscando contexto histórico:', error);
+        return null;
+    }
+}
+
+// 🆕 FUNÇÃO: Formatar contexto para IA
+function formatContextForAI(context) {
+    const { clientProfile, recentMessages, upcomingAppointments, pastAppointments } = context;
+    
+    let formattedContext = `=== CONTEXTO HISTÓRICO DO CLIENTE ===
+
+👤 PERFIL:
+• Nome: ${clientProfile.name || 'Não informado'}
+• Cliente desde: ${clientProfile.created_at ? new Date(clientProfile.created_at).toLocaleDateString('pt-BR') : 'Novo cliente'}
+
+`;
+
+    // 📅 AGENDAMENTOS FUTUROS
+    if (upcomingAppointments && upcomingAppointments.length > 0) {
+        formattedContext += `📅 PRÓXIMOS AGENDAMENTOS:
+`;
+        upcomingAppointments.forEach(apt => {
+            const date = new Date(apt.scheduled_at).toLocaleDateString('pt-BR');
+            const time = new Date(apt.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            const professional = apt.professionals?.name || 'Profissional não especificado';
+            formattedContext += `• ${date} às ${time} - ${professional} (${apt.status})\n`;
+        });
+        formattedContext += '\n';
+    }
+
+    // 📋 HISTÓRICO DE CONSULTAS
+    if (pastAppointments && pastAppointments.length > 0) {
+        formattedContext += `📋 HISTÓRICO DE CONSULTAS:
+`;
+        pastAppointments.slice(0, 3).forEach(apt => {
+            const date = new Date(apt.scheduled_at).toLocaleDateString('pt-BR');
+            const professional = apt.professionals?.name || 'Profissional não especificado';
+            formattedContext += `• ${date} - ${professional} (${apt.status})\n`;
+        });
+        formattedContext += '\n';
+    }
+
+    // 💬 ÚLTIMAS CONVERSAS
+    if (recentMessages && recentMessages.length > 0) {
+        formattedContext += `💬 ÚLTIMAS CONVERSAS:
+`;
+        recentMessages.reverse().slice(-5).forEach(msg => {
+            const date = new Date(msg.created_at).toLocaleDateString('pt-BR');
+            const sender = msg.sender_type === 'user' ? 'Cliente' : 'Assistente';
+            const content = msg.content.length > 80 ? msg.content.substring(0, 80) + '...' : msg.content;
+            formattedContext += `• ${date} - ${sender}: ${content}\n`;
+        });
+        formattedContext += '\n';
+    }
+
+    formattedContext += `=== FIM DO CONTEXTO ===
+
+🎯 INSTRUÇÕES PARA IA:
+Use este contexto para:
+1. Reconhecer o cliente como pessoa conhecida
+2. Referenciar agendamentos quando relevante ("sua consulta com Dr. João")
+3. Ser mais eficiente em reagendamentos
+4. Detectar padrões de preferência por profissionais
+
+`;
+
+    return formattedContext;
+}
+
+// 🔄 FUNÇÃO MODIFICADA: analyzeWithProfessionalPreference COM CONTEXTO HISTÓRICO
+async function analyzeWithProfessionalPreferenceWithContext(message, contactId, userId) {
+  try {
+    console.log('🔍 Analisando com preferências profissionais E CONTEXTO HISTÓRICO...');
+
+    // 🆕 BUSCAR CONTEXTO HISTÓRICO
+    const historicalContext = await getClientHistoricalContext(contactId, userId);
+    
+    // 📝 PROMPT EXPANDIDO COM CONTEXTO
+    const contextualPrompt = `${historicalContext || ''}
+
+=== MENSAGEM ATUAL ===
+CLIENTE: "${message}"
+
+Analise considerando:
+1. O histórico do cliente (se disponível)
+2. Agendamentos futuros existentes  
+3. Padrões de comportamento anteriores
+4. Preferências por profissionais específicos
+
+Retorne JSON com:
+{
+    "intention": "scheduling|cancellation|rescheduling|inquiry|availability|confirmation|general",
+    "confidence": 0.0-1.0,
+    "extracted_info": {
+        "date": "YYYY-MM-DD ou null",
+        "time": "HH:MM ou null",
+        "professional_preference": "nome ou null",
+        "reference_to_existing": true/false,
+        "appointment_to_modify": "descrição ou null"
+    },
+    "dateTime": {
+        "suggestedDate": "YYYY-MM-DD ou null", 
+        "suggestedTime": "HH:MM ou null",
+        "hasDateReference": true/false,
+        "hasTimeReference": true/false
+    },
+    "response_context": {
+        "should_reference_history": true/false,
+        "personalized_greeting": true/false
+    }
+}`;
+
+    console.log('📡 Enviando para DeepSeek com contexto histórico...');
+    
+    const response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`
+        },
+        body: JSON.stringify({
+            model: 'deepseek-chat',
+            messages: [
+                {
+                    role: 'system',
+                    content: 'Você é um assistente especializado em agendamentos com acesso ao histórico completo do cliente. Use o contexto para respostas personalizadas e eficientes.'
+                },
+                {
+                    role: 'user',
+                    content: contextualPrompt
+                }
+            ],
+            max_tokens: 400,
+            temperature: 0.3
+        })
+    });
+
+    const data = await response.json();
+    let result = data.choices[0]?.message?.content;
+
+    // 🔧 LIMPAR BACKTICKS (se houver)
+    if (result.includes('```')) {
+        result = result.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+    }
+
+    const analysis = JSON.parse(result.trim());
+
+    console.log('✅ Análise COM CONTEXTO concluída:', analysis.intention, `(${analysis.confidence})`);
+    
+    // 🆕 ADICIONAR CONTEXTO NO RESULTADO
+    analysis.historical_context = {
+        context_available: !!historicalContext,
+        context_used: true
+    };
+
+    // Manter compatibilidade com código existente
+    analysis.isSchedulingIntent = ['scheduling', 'rescheduling', 'cancellation', 'availability', 'confirmation'].includes(analysis.intention);
+    analysis.contactId = contactId;
+    analysis.companyId = userId;
+    analysis.provider = 'deepseek';
+    analysis.timestamp = new Date().toISOString();
+
+    return analysis;
+
+  } catch (error) {
+    console.error('❌ Erro na análise com contexto:', error);
+    
+    // 🔄 FALLBACK: Usar função original se der erro
+    return await analyzeWithProfessionalPreference(message, contactId, userId);
+  }
+}
+
 // ===============================================
 // EXPORTAR FUNÇÕES
 // ===============================================
@@ -386,8 +630,13 @@ module.exports = {
   analyze,
   analyzeFallback,
   analyzeHybrid,
-  analyzeWithProfessionalPreference,
+  detectServiceMention,
   extractDateTime,
+  extractProfessionalPreference,
+  cleanProfessionalName,
+  mapSpecialty,
+  analyzeWithProfessionalPreference,
+  determineSuggestedApproach,
   INTENTION_TYPES,
-  KEYWORDS
+  INTENTION_KEYWORDS
 };
