@@ -919,6 +919,7 @@ async handleInquiryIntent(analysis, contact, userId) {
 }
 
 // 🆕 FUNÇÃO: Remarcação automática
+// 🆕 FUNÇÃO: Remarcação automática
 async handleReschedulingIntent(analysis, contact, userId) {
     try {
         console.log('🔄 Processando remarcação automática...');
@@ -952,113 +953,102 @@ async handleReschedulingIntent(analysis, contact, userId) {
             // Por enquanto, usar o primeiro (próximo agendamento)
         }
 
-        // 3. 📅 VERIFICAR SE NOVA DATA/HORA FOI ESPECIFICADA
-        const newDate = analysis.extracted_info?.date || analysis.dateTime?.suggestedDate;
-        const newTime = analysis.extracted_info?.time || analysis.dateTime?.suggestedTime;
+        // 3. 🕐 EXTRAIR NOVA DATA/HORA DA MENSAGEM
+        const dateTimeInfo = analysis.extracted_info || {};
+        const newDateTime = this.parseNewDateTime(analysis.message || '', dateTimeInfo);
 
-        if (!newDate && !newTime) {
-            // Mostrar agendamento atual e pedir nova data
+        if (!newDateTime.isValid) {
+            // Se não especificou nova data/hora, perguntar
             const currentDate = new Date(appointmentToReschedule.scheduled_at);
-            const dateStr = currentDate.toLocaleDateString('pt-BR', { 
+            const currentDateStr = currentDate.toLocaleDateString('pt-BR', { 
                 weekday: 'long', 
                 day: '2-digit', 
                 month: 'long' 
             });
-            const timeStr = currentDate.toLocaleTimeString('pt-BR', { 
+            const currentTimeStr = currentDate.toLocaleTimeString('pt-BR', { 
                 hour: '2-digit', 
                 minute: '2-digit' 
             });
-            const professional = appointmentToReschedule.professionals?.name || 'Profissional';
+            const professional = appointmentToReschedule.professionals?.name || 'N/A';
 
-            return `🔄 *Remarcação de consulta*\n\n📅 **Consulta atual:**\n${dateStr} às ${timeStr}\n👨‍⚕️ ${professional}\n\n💬 *Para quando gostaria de remarcar?*\nEx: "Para segunda às 15h" ou "Para dia 20 às 10h"`;
+            return `📅 *Você tem consulta marcada para:*\n**${currentDateStr}** às **${currentTimeStr}**\n👨‍⚕️ **${professional}**\n\n💬 *Para quando gostaria de remarcar?*\nEx: "Para segunda às 15h" ou "Para dia 15 às 10h"`;
         }
 
-        // 4. 🗓️ PROCESSAR NOVA DATA/HORA
-        let newDateTime = new Date();
-        
-        if (newDate) {
-            newDateTime = new Date(newDate);
-        }
-        
-        if (newTime) {
-            const [hours, minutes] = newTime.split(':');
-            newDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-        }
-
-        // 5. 🔄 FAZER A REMARCAÇÃO
+        // 4. 🗑️ DELETAR EVENTO ANTIGO DO GOOGLE CALENDAR
         const professional = appointmentToReschedule.professionals;
         
-        // 5.1. Deletar evento antigo do Google Calendar
-        if (appointmentToReschedule.google_event_id && professional?.google_access_token) {
+        if (professional?.google_access_token && appointmentToReschedule.google_event_id) {
             try {
                 await this.deleteGoogleCalendarEvent(
-                    professional.google_access_token,
+                    professional.google_access_token, 
                     appointmentToReschedule.google_event_id
                 );
                 console.log('🗑️ Evento antigo deletado do Google Calendar');
-            } catch (error) {
-                console.error('⚠️ Erro deletando evento antigo:', error);
-                // Continua mesmo se não conseguir deletar
+            } catch (calendarError) {
+                console.error('❌ Erro deletando evento antigo:', calendarError);
+                // Continuar mesmo se não conseguir deletar
             }
         }
 
-        // 5.2. Criar novo evento no Google Calendar
-        const newEventData = {
-            title: appointmentToReschedule.title,
-            description: `👤 Paciente: ${contact.name || contact.phone}
-📞 Telefone: ${contact.phone}
+        // 5. 📅 CRIAR NOVO EVENTO NO GOOGLE CALENDAR
+        let newEventId = null;
+        if (professional?.google_access_token) {
+            try {
+                const eventData = {
+                    summary: appointmentToReschedule.title || `Consulta - ${contact.name}`,
+                    start: {
+                        dateTime: newDateTime.iso,
+                        timeZone: 'America/Sao_Paulo'
+                    },
+                    end: {
+                        dateTime: new Date(new Date(newDateTime.iso).getTime() + 60 * 60 * 1000).toISOString(),
+                        timeZone: 'America/Sao_Paulo'
+                    },
+                    description: `Consulta remarcada - Cliente: ${contact.name}`
+                };
 
-👨‍⚕️ Profissional: ${professional?.name}
-${professional?.specialty ? `🎯 Especialidade: ${professional.specialty}` : ''}
+                const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${professional.google_access_token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(eventData)
+                });
 
-🔄 REMARCADO via IA WhatsApp CRM
-⏰ Remarcado em: ${new Date().toLocaleString('pt-BR')}`,
-            startDateTime: newDateTime.toISOString(),
-            endDateTime: new Date(newDateTime.getTime() + 60 * 60 * 1000).toISOString() // +1 hora
-        };
-
-        let newGoogleEventId = null;
-        try {
-            const calendarResponse = await fetch(`http://localhost:3001/api/calendar/create/${professional.id}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(newEventData)
-            });
-
-            const calendarResult = await calendarResponse.json();
-            if (calendarResult.success) {
-                newGoogleEventId = calendarResult.eventId;
-                console.log('✅ Novo evento criado no Google Calendar:', newGoogleEventId);
+                if (response.ok) {
+                    const newEvent = await response.json();
+                    newEventId = newEvent.id;
+                    console.log('📅 Novo evento criado no Google Calendar:', newEventId);
+                }
+            } catch (calendarError) {
+                console.error('❌ Erro criando novo evento:', calendarError);
+                // Continuar mesmo se não conseguir criar evento
             }
-        } catch (error) {
-            console.error('❌ Erro criando novo evento:', error);
-            return "❌ Erro ao remarcar no Google Calendar. Tente novamente.";
         }
 
-        // 5.3. Atualizar no banco de dados
+        // 6. 💾 ATUALIZAR NO BANCO DE DADOS
         const { error: updateError } = await supabaseAdmin
             .from('appointments')
             .update({
-                scheduled_at: newDateTime.toISOString(),
-                google_event_id: newGoogleEventId,
+                scheduled_at: newDateTime.iso,
+                google_event_id: newEventId,
                 updated_at: new Date().toISOString()
             })
             .eq('id', appointmentToReschedule.id);
 
         if (updateError) {
             console.error('❌ Erro atualizando agendamento:', updateError);
-            return "❌ Erro ao atualizar agendamento. Tente novamente.";
+            return "❌ Erro ao salvar remarcação. Tente novamente.";
         }
 
-        // 6. ✅ CONFIRMAR REMARCAÇÃO
-        const newDateStr = newDateTime.toLocaleDateString('pt-BR', { 
+        // 7. ✅ ENVIAR CONFIRMAÇÃO
+        const newDateStr = newDateTime.date.toLocaleDateString('pt-BR', { 
             weekday: 'long', 
             day: '2-digit', 
             month: 'long' 
         });
-        const newTimeStr = newDateTime.toLocaleTimeString('pt-BR', { 
+        const newTimeStr = newDateTime.date.toLocaleTimeString('pt-BR', { 
             hour: '2-digit', 
             minute: '2-digit' 
         });
@@ -1066,28 +1056,26 @@ ${professional?.specialty ? `🎯 Especialidade: ${professional.specialty}` : ''
         return `✅ *Consulta remarcada com sucesso!*
 
 👨‍⚕️ *Profissional:* ${professional?.name}
-${professional?.specialty ? `🎯 *Especialidade:* ${professional.specialty}` : ''}
-📅 *Nova data:* ${newDateStr}
+📅 *Nova data:* ${newDateStr}  
 🕐 *Novo horário:* ${newTimeStr}
 
 📝 *O evento foi atualizado no Google Calendar.*
-📱 *Você receberá lembretes automáticos.*
 
-Em caso de dúvidas, entre em contato! 😊`;
+💬 *Alguma outra dúvida? Estou aqui para ajudar!*`;
 
     } catch (error) {
         console.error('❌ Erro na remarcação:', error);
-        return "❌ Erro ao processar remarcação. Tente novamente ou entre em contato diretamente.";
+        return "❌ Erro ao remarcar. Tente novamente.";
     }
 }
 
-// 🆕 FUNÇÃO: Cancelamento de consultas
+// 🆕 FUNÇÃO: Cancelamento automático
 async handleCancellationIntent(analysis, contact, userId) {
     try {
-        console.log('❌ Processando cancelamento...');
+        console.log('❌ Processando cancelamento automático...');
 
-        // Buscar agendamentos futuros
-        const { data: appointments, error } = await supabaseAdmin
+        // 1. 🔍 BUSCAR AGENDAMENTOS FUTUROS DO CLIENTE
+        const { data: appointments, error: appointmentsError } = await supabaseAdmin
             .from('appointments')
             .select(`
                 id,
@@ -1095,34 +1083,37 @@ async handleCancellationIntent(analysis, contact, userId) {
                 status,
                 title,
                 google_event_id,
-                professionals(name, specialty, google_access_token)
+                professionals(id, name, specialty, google_access_token, google_refresh_token)
             `)
             .eq('contact_id', contact.id)
             .gte('scheduled_at', new Date().toISOString())
             .eq('status', 'confirmed')
             .order('scheduled_at', { ascending: true });
 
-        if (error || !appointments || appointments.length === 0) {
-            return "📅 *Você não tem consultas confirmadas para cancelar.*";
+        if (appointmentsError || !appointments || appointments.length === 0) {
+            return "📅 *Você não tem consultas confirmadas para cancelar.*\n\n💬 Gostaria de agendar uma nova consulta?";
         }
 
-        // Por simplicidade, cancelar a próxima consulta
-        const appointmentToCancel = appointments[0];
-        const professional = appointmentToCancel.professionals;
+        // 2. 🎯 IDENTIFICAR QUAL AGENDAMENTO CANCELAR (próximo por padrão)
+        let appointmentToCancel = appointments[0];
 
-        // Deletar do Google Calendar
-        if (appointmentToCancel.google_event_id && professional?.google_access_token) {
+        // 3. 🗑️ DELETAR EVENTO DO GOOGLE CALENDAR
+        const professional = appointmentToCancel.professionals;
+        
+        if (professional?.google_access_token && appointmentToCancel.google_event_id) {
             try {
                 await this.deleteGoogleCalendarEvent(
-                    professional.google_access_token,
+                    professional.google_access_token, 
                     appointmentToCancel.google_event_id
                 );
-            } catch (error) {
-                console.error('⚠️ Erro deletando do Google Calendar:', error);
+                console.log('🗑️ Evento deletado do Google Calendar');
+            } catch (calendarError) {
+                console.error('❌ Erro deletando evento:', calendarError);
+                // Continuar mesmo se não conseguir deletar
             }
         }
 
-        // Atualizar status no banco
+        // 4. 💾 ATUALIZAR STATUS NO BANCO DE DADOS
         const { error: updateError } = await supabaseAdmin
             .from('appointments')
             .update({
@@ -1132,10 +1123,11 @@ async handleCancellationIntent(analysis, contact, userId) {
             .eq('id', appointmentToCancel.id);
 
         if (updateError) {
-            console.error('❌ Erro cancelando agendamento:', updateError);
+            console.error('❌ Erro atualizando status:', updateError);
             return "❌ Erro ao cancelar. Tente novamente.";
         }
 
+        // 5. ✅ ENVIAR CONFIRMAÇÃO
         const date = new Date(appointmentToCancel.scheduled_at);
         const dateStr = date.toLocaleDateString('pt-BR', { 
             weekday: 'long', 
@@ -1181,6 +1173,58 @@ async deleteGoogleCalendarEvent(accessToken, eventId) {
     } catch (error) {
         console.error('❌ Erro deletando evento:', error);
         throw error;
+    }
+}
+
+// 🆕 FUNÇÃO AUXILIAR: Parse de nova data/hora
+parseNewDateTime(message, extractedInfo) {
+    try {
+        // Implementação básica - pode ser expandida
+        const timeMatch = message.match(/(\d{1,2}):?(\d{0,2})\s?(h|hs|horas?)?/i);
+        const dayMatch = message.match(/(segunda|terça|quarta|quinta|sexta|sábado|domingo|seg|ter|qua|qui|sex|sáb|dom)/i);
+        
+        if (!timeMatch) {
+            return { isValid: false };
+        }
+
+        const hour = parseInt(timeMatch[1]);
+        const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+        
+        // Criar data para próxima ocorrência do dia especificado
+        let targetDate = new Date();
+        
+        if (dayMatch) {
+            const dayNames = {
+                'segunda': 1, 'seg': 1,
+                'terça': 2, 'ter': 2,
+                'quarta': 3, 'qua': 3,
+                'quinta': 4, 'qui': 4,
+                'sexta': 5, 'sex': 5,
+                'sábado': 6, 'sáb': 6,
+                'domingo': 0, 'dom': 0
+            };
+            
+            const targetDay = dayNames[dayMatch[1].toLowerCase()];
+            const today = targetDate.getDay();
+            const daysUntilTarget = (targetDay - today + 7) % 7 || 7;
+            
+            targetDate.setDate(targetDate.getDate() + daysUntilTarget);
+        } else {
+            // Se não especificou dia, assumir próximo dia útil
+            targetDate.setDate(targetDate.getDate() + 1);
+        }
+        
+        targetDate.setHours(hour, minute, 0, 0);
+        
+        return {
+            isValid: true,
+            date: targetDate,
+            iso: targetDate.toISOString()
+        };
+        
+    } catch (error) {
+        console.error('❌ Erro parseando data/hora:', error);
+        return { isValid: false };
     }
 }
 
