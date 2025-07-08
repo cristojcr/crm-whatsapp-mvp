@@ -13,7 +13,7 @@ const DEEPSEEK_CONFIG = {
   API_KEY: process.env.DEEPSEEK_API_KEY,
   MODEL: 'deepseek-chat',
   TEMPERATURE: 0.1,
-  MAX_TOKENS: 150
+  MAX_TOKENS: 300
 };
 
 // ===============================================
@@ -21,7 +21,7 @@ const DEEPSEEK_CONFIG = {
 // ===============================================
 const INTENTION_TYPES = {
   SCHEDULING: 'scheduling',
-  RESCHEDULING: 'rescheduling',
+  RESCHEDULING: 'rescheduling', 
   CANCELLATION: 'cancellation',
   INQUIRY: 'inquiry',
   GENERAL: 'general',
@@ -54,31 +54,88 @@ const INTENTION_KEYWORDS = {
 };
 
 // ===============================================
-// FUNÇÃO PRINCIPAL: ANÁLISE DE INTENÇÃO
+// FUNÇÃO: CONSTRUIR PROMPT DE ANÁLISE COM CONTEXTO TEMPORAL
 // ===============================================
-async function analyze(messageContent) {
+function buildAnalysisPrompt(messageContent, context = {}) {
+  // 📅 CRIAR DATA ATUAL EM BRASÍLIA
+  const agora = new Date();
+  const hoje = new Date(agora.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+
+  // 🔍 LOGS DE DEBUG
+  console.log('🕐 UTC Original:', agora.toISOString());
+  console.log('🇧🇷 Brasília Convertido:', hoje.toISOString());
+  
+  const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  
+  const dataAtual = `${diasSemana[hoje.getDay()]}, ${hoje.getDate()} de ${meses[hoje.getMonth()]} de ${hoje.getFullYear()}`;
+  
+  console.log('📅 Data enviada para IA:', dataAtual);
+  
+  let prompt = `CONTEXTO TEMPORAL: HOJE É ${dataAtual.toUpperCase()}
+TIMEZONE: BRASÍLIA (GMT-3) - TODOS OS HORÁRIOS SÃO NO FUSO HORÁRIO DO BRASIL!
+IMPORTANTE: Quando o usuário diz "10:00", é 10:00 da manhã NO BRASIL (GMT-3).
+
+Analise a intenção desta mensagem:
+
+MENSAGEM: "${messageContent}"
+
+IMPORTANTE PARA AGENDAMENTOS:
+- Se disser "amanhã": calcule ${hoje.getDate() + 1}/${hoje.getMonth() + 1}/${hoje.getFullYear()}
+- Se disser "próxima segunda/terça/quarta/quinta/sexta/sábado/domingo": calcule o PRÓXIMO dia da semana mencionado
+- TODOS OS HORÁRIOS SÃO EM BRASÍLIA (GMT-3)
+- Para "próxima sexta-feira": se hoje é ${diasSemana[hoje.getDay()]} (${hoje.getDate()}/${hoje.getMonth() + 1}), calcule qual é a próxima sexta
+
+TIPOS DE INTENÇÃO DISPONÍVEIS:
+- scheduling: quer agendar algo novo
+- rescheduling: quer remarcar algo já agendado  
+- cancellation: quer cancelar algo agendado
+- inquiry: pergunta sobre agendamentos existentes
+- general: conversa geral, saudações, outras`;
+
+  // Adicionar contexto se disponível
+  if (context.previousMessages && context.previousMessages.length > 0) {
+    prompt += `\n\nCONTEXTO ANTERIOR:\n`;
+    context.previousMessages.forEach((msg, index) => {
+      prompt += `${index + 1}. ${msg}\n`;
+    });
+  }
+
+  prompt += `
+
+RETORNE APENAS UM JSON NO SEGUINTE FORMATO (sem markdown, sem backticks):
+{
+  "intention": "tipo_de_intencao",
+  "confidence": 0.95,
+  "reasoning": "explicacao_breve",
+  "dateTime": {
+    "suggestedDate": "YYYY-MM-DD",
+    "suggestedTime": "HH:MM",
+    "hasDateReference": true,
+    "hasTimeReference": true
+  }
+}
+
+CALCULE AS DATAS CORRETAMENTE baseado em hoje ser ${dataAtual}!
+
+IMPORTANTE: Retorne APENAS o JSON, sem texto adicional, sem markdown, sem \`\`\`json.`;
+
+  return prompt;
+}
+
+// ===============================================
+// FUNÇÃO PRINCIPAL: ANÁLISE DE INTENÇÃO COM CONTEXTO TEMPORAL
+// ===============================================
+async function analyze(messageContent, context = {}) {
   try {
     if (!messageContent || typeof messageContent !== 'string') {
       return { intention: 'general', confidence: 0, provider: 'fallback' };
     }
 
-    const prompt = `Analise esta mensagem e determine a intenção principal:
+    console.log('🧠 Analisando intenção com DeepSeek:', messageContent);
 
-MENSAGEM: "${messageContent}"
-
-INTENÇÕES POSSÍVEIS:
-- scheduling: quer agendar algo
-- rescheduling: quer remarcar algo já agendado  
-- cancellation: quer cancelar algo agendado
-- inquiry: pergunta sobre agendamentos existentes
-- general: conversa geral, saudações, outras
-
-RESPONDA EM JSON:
-{
-  "intention": "uma das opções acima",
-  "confidence": 0.0-1.0,
-  "reasoning": "breve explicação"
-}`;
+    // Construir prompt com contexto temporal
+    const prompt = buildAnalysisPrompt(messageContent, context);
 
     const response = await fetch(DEEPSEEK_CONFIG.API_URL, {
       method: 'POST',
@@ -109,12 +166,15 @@ RESPONDA EM JSON:
     // Limpar possíveis markdown da resposta
     const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
+    console.log('🤖 Resposta da IA (limpa):', cleanContent);
+    
     const result = JSON.parse(cleanContent);
     
     return {
       intention: result.intention || 'general',
       confidence: result.confidence || 0.5,
       reasoning: result.reasoning || 'Análise automática',
+      dateTime: result.dateTime || null,
       provider: 'deepseek',
       timestamp: new Date().toISOString()
     };
@@ -130,6 +190,7 @@ RESPONDA EM JSON:
 // ===============================================
 function analyzeFallback(messageContent) {
   try {
+    console.log('🔄 Usando análise fallback...');
     const content = messageContent.toLowerCase();
     let bestMatch = { intention: 'general', confidence: 0 };
 
@@ -150,8 +211,15 @@ function analyzeFallback(messageContent) {
       }
     });
 
+    // Se detectou agendamento no fallback, tentar extrair data/hora básica
+    let dateTime = null;
+    if (bestMatch.intention === 'scheduling') {
+      dateTime = extractDateTime(messageContent);
+    }
+
     return {
       ...bestMatch,
+      dateTime: dateTime,
       provider: 'fallback',
       timestamp: new Date().toISOString()
     };
@@ -161,6 +229,7 @@ function analyzeFallback(messageContent) {
     return {
       intention: 'general',
       confidence: 0,
+      dateTime: null,
       provider: 'fallback',
       timestamp: new Date().toISOString()
     };
@@ -170,10 +239,10 @@ function analyzeFallback(messageContent) {
 // ===============================================
 // FUNÇÃO: ANÁLISE HÍBRIDA (IA + FALLBACK)
 // ===============================================
-async function analyzeHybrid(messageContent) {
+async function analyzeHybrid(messageContent, context = {}) {
   try {
     // Tentar primeiro com IA
-    const aiResult = await analyze(messageContent);
+    const aiResult = await analyze(messageContent, context);
     
     // Se confiança baixa, tentar fallback
     if (aiResult.confidence < 0.3) {
@@ -236,36 +305,60 @@ function detectServiceMention(message, availableServices = []) {
 }
 
 // ===============================================
-// FUNÇÃO: EXTRAIR INFORMAÇÕES DE DATA/HORA
+// FUNÇÃO: EXTRAIR INFORMAÇÕES DE DATA/HORA (FALLBACK)
 // ===============================================
 function extractDateTime(message) {
   try {
+    console.log('🕐 Extraindo data/hora localmente (fallback):', message);
+    
+    const now = new Date();
     const patterns = {
-      // Dias da semana
-      weekdays: /\b(segunda|terça|quarta|quinta|sexta|sábado|domingo|seg|ter|qua|qui|sex|sáb|dom)\b/gi,
-      // Períodos do dia  
-      periods: /\b(manhã|tarde|noite|manha|de manhã|de tarde|a tarde|a noite)\b/gi,
-      // Horários específicos
-      times: /\b(\d{1,2}):?(\d{0,2})\s?(h|hs|horas?)?\b/gi,
-      // Datas relativas
-      relative: /\b(hoje|amanhã|depois de amanha|na proxima|próxima|semana que vem)\b/gi
+      tomorrow: /\b(amanhã|amanha)\b/gi,
+      today: /\b(hoje)\b/gi,
+      time: /\b(\d{1,2}):?(\d{0,2})\s?(h|hs|horas?)?\b/gi
     };
-
-    const extracted = {};
-
-    // Extrair padrões
-    Object.keys(patterns).forEach(pattern => {
-      const matches = message.match(patterns[pattern]);
-      if (matches) {
-        extracted[pattern] = matches;
+    
+    let suggestedDate = null;
+    let suggestedTime = null;
+    
+    // Detectar data
+    if (patterns.tomorrow.test(message)) {
+      suggestedDate = new Date(now);
+      suggestedDate.setDate(now.getDate() + 1);
+    } else if (patterns.today.test(message)) {
+      suggestedDate = new Date(now);
+    }
+    
+    // Detectar horário
+    const timeMatch = message.match(patterns.time);
+    if (timeMatch && timeMatch.length > 0) {
+      const timeStr = timeMatch[0];
+      const timeDigits = timeStr.match(/\d+/g);
+      if (timeDigits && timeDigits.length > 0) {
+        const hour = parseInt(timeDigits[0]);
+        const minute = timeDigits.length > 1 ? parseInt(timeDigits[1]) : 0;
+        
+        if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+          suggestedTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        }
       }
-    });
-
-    return extracted;
+    }
+    
+    return {
+      suggestedDate: suggestedDate ? suggestedDate.toISOString().split('T')[0] : null,
+      suggestedTime: suggestedTime,
+      hasDateReference: suggestedDate !== null,
+      hasTimeReference: suggestedTime !== null
+    };
     
   } catch (error) {
     console.error('❌ Erro ao extrair data/hora:', error);
-    return {};
+    return {
+      suggestedDate: null,
+      suggestedTime: null,
+      hasDateReference: false,
+      hasTimeReference: false
+    };
   }
 }
 
@@ -365,45 +458,44 @@ function mapSpecialty(specialty) {
   return specialtyMap[specialty.toLowerCase()] || specialty;
 }
 
-async function analyzeWithProfessionalPreference(message, contactId, userId) {
+// ===============================================
+// FUNÇÃO: ANÁLISE COM PREFERÊNCIAS PROFISSIONAIS (CORRIGIDA)
+// ===============================================
+async function analyzeWithProfessionalPreference(message, contactId, companyId) {
   try {
     console.log('🔍 Analisando com preferências profissionais...');
     
-    // Análise básica da intenção
+    // ✅ USAR A FUNÇÃO analyze QUE JÁ TEM CONTEXTO TEMPORAL CORRETO
     const basicAnalysis = await analyze(message);
     
-    // Verificar se é intenção de agendamento
-    const isSchedulingIntent = ['scheduling', 'rescheduling', 'cancellation', 'inquiry', 'availability', 'confirmation'].includes(basicAnalysis.intention);
-    
-    if (!isSchedulingIntent) {
-      return {
-        ...basicAnalysis,
-        isSchedulingIntent: false
-      };
+    // Se não é agendamento, retornar análise básica
+    if (basicAnalysis.intention !== 'scheduling') {
+      return basicAnalysis;
     }
-
-    // Extrair preferências da mensagem
-    const professionalPreference = extractProfessionalPreference(message);
-
-    // Combinar análise com preferências
-    const enrichedAnalysis = {
-      ...basicAnalysis,
-      isSchedulingIntent: true,
-      professional_preference: {
-        from_message: professionalPreference,
-        from_history: null // Seria implementado com banco de dados
-      },
-      suggested_approach: determineSuggestedApproach(professionalPreference, null)
-    };
-
-    return enrichedAnalysis;
-
-  } catch (error) {
-    console.error('❌ Erro na análise com preferências:', error);
+    
+    // 🔧 CORREÇÃO: PRESERVAR dateTime da IA! (NÃO sobrescrever)
+    let dateTime = basicAnalysis.dateTime;
+    
+    if (!dateTime || (!dateTime.suggestedDate && !dateTime.suggestedTime)) {
+      console.log('⚠️ IA não retornou dateTime válido, extraindo localmente...');
+      dateTime = extractDateTime(message);
+    } else {
+      console.log('✅ Usando dateTime da IA:', dateTime);
+    }
+    
+    // Retornar análise enriquecida PRESERVANDO o dateTime da IA
     return {
-      isSchedulingIntent: false,
-      error: error.message
+      ...basicAnalysis,
+      dateTime: dateTime, // ✅ PRESERVA o dateTime da IA
+      professionalPreference: null, // Implementar busca de preferências depois
+      contactId: contactId,
+      companyId: companyId,
+      isSchedulingIntent: true
     };
+    
+  } catch (error) {
+    console.error('❌ Erro na análise com preferências:', error.message);
+    return analyzeFallback(message);
   }
 }
 
@@ -530,62 +622,20 @@ async function analyzeWithProfessionalPreferenceWithContext(message, contactId, 
     // Formatar para IA
     const contextualPrompt = formatContextForAI(historicalContext, message);
     
-    // Fazer análise com contexto
-    const prompt = `${contextualPrompt}
-
-Com base no contexto histórico e mensagem atual, analise a intenção:
-
-INTENÇÕES POSSÍVEIS:
-- scheduling: quer agendar algo novo
-- rescheduling: quer remarcar agendamento existente  
-- cancellation: quer cancelar agendamento existente
-- inquiry: pergunta sobre agendamentos existentes
-- general: conversa geral
-
-RESPONDA EM JSON:
-{
-  "intention": "uma das opções acima",
-  "confidence": 0.0-1.0,
-  "reasoning": "explicação considerando histórico",
-  "referenced_appointment": "se mencionou agendamento específico",
-  "suggested_action": "ação recomendada"
-}`;
-
-    const response = await fetch(DEEPSEEK_CONFIG.API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DEEPSEEK_CONFIG.API_KEY}`
-      },
-      body: JSON.stringify({
-        model: DEEPSEEK_CONFIG.MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-        max_tokens: 200
-      })
-    });
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const analysis = JSON.parse(cleanContent);
+    // Fazer análise com contexto - USANDO A FUNÇÃO analyze QUE TEM CONTEXTO TEMPORAL
+    const analysis = await analyze(contextualPrompt);
 
     return {
         ...analysis,
         provider: 'deepseek-contextual',
         timestamp: new Date().toISOString(),
         historical_context: historicalContext,
-        context_used: true
+        context_used: true,
+        // Manter compatibilidade com código existente
+        isSchedulingIntent: ['scheduling', 'rescheduling', 'cancellation', 'availability', 'confirmation'].includes(analysis.intention),
+        contactId: contactId,
+        companyId: userId
     };
-
-    // Manter compatibilidade com código existente
-    analysis.isSchedulingIntent = ['scheduling', 'rescheduling', 'cancellation', 'availability', 'confirmation'].includes(analysis.intention);
-    analysis.contactId = contactId;
-    analysis.companyId = userId;
-    analysis.provider = 'deepseek';
-    analysis.timestamp = new Date().toISOString();
-
-    return analysis;
 
   } catch (error) {
     console.error('❌ Erro na análise com contexto:', error);
@@ -607,11 +657,12 @@ module.exports = {
   extractProfessionalPreference,
   cleanProfessionalName,
   mapSpecialty,
-  analyzeWithProfessionalPreference,
+  analyzeWithProfessionalPreference,               // ✅ CORRIGIDA - PRESERVA dateTime da IA
   determineSuggestedApproach,
   getClientHistoricalContext,                      // 🆕 NOVA FUNÇÃO
   formatContextForAI,                              // 🆕 NOVA FUNÇÃO  
   analyzeWithProfessionalPreferenceWithContext,    // 🆕 NOVA FUNÇÃO
+  buildAnalysisPrompt,                             // ✅ RESTAURADA - Contexto temporal
   INTENTION_TYPES,
   INTENTION_KEYWORDS
 };
