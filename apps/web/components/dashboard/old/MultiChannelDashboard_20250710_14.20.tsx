@@ -35,7 +35,7 @@ const ChannelIcon = ({ type }) => {
 const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) => {
     // Estados do dashboard
     const [selectedChannel, setSelectedChannel] = useState('all');
-    const [activeTab, setActiveTab] = useState('multicanal'); // ✅ CORREÇÃO: Inicia na aba Dashboard
+    const [activeTab, setActiveTab] = useState('multicanais');
 
     // Estados dos profissionais
     const [professionals, setProfessionals] = useState([]);
@@ -307,77 +307,22 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
 
         setProfessionalsLoading(true);
         try {
-            // Carregar dados básicos primeiro
             await Promise.all([
                 loadProfessionals(),
                 loadPlanLimits(),
                 loadAppointmentStats()
             ]);
 
-            // ✅ CORREÇÃO: Carregar status do calendar APÓS carregar profissionais
-            // Aguardar um pouco para garantir que os profissionais foram carregados
-            setTimeout(async () => {
-                const currentProfessionals = professionals.length > 0 ? professionals : await getCurrentProfessionals();
-                
-                if (currentProfessionals && currentProfessionals.length > 0) {
-                    console.log('🔄 Carregando status do Google Calendar para todos os profissionais...');
-                    
-                    // Carregar status para cada profissional
-                    for (const prof of currentProfessionals) {
-                        await loadCalendarStatus(prof.id);
-                    }
-                    
-                    console.log('✅ Status do Google Calendar carregado para todos os profissionais');
-                }
-            }, 500); // Aguardar 500ms para garantir que os profissionais foram carregados
-            
+            // Carregar status do calendar para todos os profissionais
+            if (professionals.length > 0) {
+                professionals.forEach(prof => {
+                    loadCalendarStatus(prof.id);
+                });
+            }
         } catch (error) {
             console.error('❌ Erro ao carregar dados:', error);
         }
         setProfessionalsLoading(false);
-    };
-
-    // ✅ NOVA FUNÇÃO: Obter profissionais atuais (para usar no timeout)
-    const getCurrentProfessionals = async () => {
-        try {
-            const response = await makeAuthenticatedRequest('http://localhost:3001/api/professionals?active_only=true');
-            
-            if (response && response.ok) {
-                const data = await response.json();
-                return data.data || [];
-            } else {
-                // Retornar dados mocados se não conseguir conectar
-                return [
-                    {
-                        id: 1,
-                        name: 'Dr. Julio Cristo',
-                        email: 'julio@clinica.com',
-                        phone: '(11) 99999-1111',
-                        specialty: 'Endodontia',
-                        google_calendar_email: 'julio.calendar@gmail.com'
-                    },
-                    {
-                        id: 2,
-                        name: 'Dra. Maria Silva',
-                        email: 'maria@clinica.com',
-                        phone: '(11) 99999-2222',
-                        specialty: 'Clínica Geral',
-                        google_calendar_email: 'maria.calendar@gmail.com'
-                    },
-                    {
-                        id: 3,
-                        name: 'Dr. Carlos Santos',
-                        email: 'carlos@clinica.com',
-                        phone: '(11) 99999-3333',
-                        specialty: 'Ortodontia',
-                        google_calendar_email: 'carlos.calendar@gmail.com'
-                    }
-                ];
-            }
-        } catch (error) {
-            console.error('❌ Erro ao obter profissionais:', error);
-            return [];
-        }
     };
 
     const loadProfessionals = async () => {
@@ -672,8 +617,6 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
 
     const loadCalendarStatus = async (professionalId) => {
         try {
-            console.log(`🔄 Carregando status do Google Calendar para profissional ${professionalId}...`);
-            
             const response = await makeAuthenticatedRequest(`http://localhost:3001/api/calendar/status/${professionalId}`);
             
             if (response && response.ok) {
@@ -685,36 +628,9 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                         last_sync: data.professional?.last_sync
                     }
                 }));
-                console.log(`✅ Status carregado para profissional ${professionalId}:`, data.professional?.connected ? 'Conectado' : 'Desconectado');
-            } else {
-                // ✅ CORREÇÃO: Usar dados mocados quando offline
-                console.warn(`⚠️ Usando status mocado para profissional ${professionalId}`);
-                
-                // Simular alguns profissionais conectados
-                const mockConnectedIds = [1, 2]; // IDs dos profissionais que já estavam conectados
-                const isConnected = mockConnectedIds.includes(parseInt(professionalId));
-                
-                setCalendarStatus(prev => ({
-                    ...prev,
-                    [professionalId]: {
-                        connected: isConnected,
-                        last_sync: isConnected ? new Date().toISOString() : null
-                    }
-                }));
-                
-                console.log(`✅ Status mocado para profissional ${professionalId}:`, isConnected ? 'Conectado' : 'Desconectado');
             }
         } catch (error) {
             console.error('❌ Erro ao carregar status do calendar:', error);
-            
-            // ✅ FALLBACK: Definir status padrão em caso de erro
-            setCalendarStatus(prev => ({
-                ...prev,
-                [professionalId]: {
-                    connected: false,
-                    last_sync: null
-                }
-            }));
         }
     };
 

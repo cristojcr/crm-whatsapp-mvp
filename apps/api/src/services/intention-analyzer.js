@@ -454,6 +454,95 @@ async function analyzeWithProfessionalPreference(message, contactId, companyId) 
   }
 }
 
+// ✅ NOVA FUNÇÃO MESTRA PARA LIDAR COM PRODUTOS E PROFISSIONAIS
+async function analyzeWithProductsAndProfessionals(message, contactId, companyId) {
+    try {
+        console.log('🛍️ Analisando com lógica de produtos...');
+
+        // 1. Tenta encontrar produtos correspondentes primeiro
+        const matchingProducts = await findMatchingProducts(message, companyId);
+
+        if (matchingProducts.length > 0) {
+            console.log(`✅ Encontrados ${matchingProducts.length} produtos correspondentes.`);
+            // Se encontrou produtos, retorna uma análise com eles
+            const basicAnalysis = await analyze(message);
+            return {
+                ...basicAnalysis,
+                products: matchingProducts, // Adiciona os produtos encontrados
+                provider: 'deepseek-product-search',
+                contactId: contactId,
+                companyId: companyId
+            };
+        }
+
+        // 2. Se não encontrou produtos, usa a sua lógica existente de profissionais
+        console.log('ℹ️ Nenhum produto encontrado. Usando análise de preferência de profissional...');
+        return await analyzeWithProfessionalPreference(message, contactId, companyId);
+
+    } catch (error) {
+        console.error('❌ Erro na análise com produtos e profissionais:', error);
+        return analyzeFallback(message); // Usa o fallback em caso de erro
+    }
+}
+
+// ✅ NOVA FUNÇÃO: Buscar produtos que correspondem ao texto
+async function findMatchingProducts(text, companyId) {
+    try {
+        // Importar supabase aqui para garantir que esteja inicializado
+        const { supabaseAdmin } = require('../config/supabase'); 
+        
+        const keywords = extractKeywords(text);
+        if (keywords.length === 0) return [];
+
+        // Constrói uma query de busca mais flexível
+        const searchQuery = keywords.join(' & '); // Para busca de texto completo (tsvector)
+
+        const { data: products, error } = await supabaseAdmin
+            .from('products')
+            .select(`
+                *,
+                professionals (
+                    id,
+                    name,
+                    specialty,
+                    calendar_connected
+                )
+            `)
+            .eq('company_id', companyId) // Usando company_id como no seu código de profissionais
+            .eq('status', 'active')
+            .not('professional_id', 'is', null)
+            .textSearch('name', searchQuery, { type: 'websearch' }); // Usando textSearch para relevância
+
+        if (error) {
+            console.error('❌ Erro ao buscar produtos por IA:', error);
+            return [];
+        }
+
+        if (!products || products.length === 0) return [];
+
+        const availableProducts = products.filter(
+            p => p.professionals && p.professionals.calendar_connected === true
+        );
+
+        return availableProducts;
+
+    } catch (error) {
+        console.error('❌ Erro em findMatchingProducts:', error);
+        return [];
+    }
+}
+
+// ✅ NOVA FUNÇÃO: Extrair palavras-chave relevantes da mensagem
+function extractKeywords(text) {
+    const commonWords = ['o', 'a', 'os', 'as', 'um', 'uma', 'de', 'do', 'da', 'quero', 'gostaria', 'preciso', 'fazer', 'marcar', 'agendar', 'consulta', 'atendimento'];
+    
+    return text
+        .toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .split(/\s+/)
+        .filter(word => word.length > 2 && !commonWords.includes(word));
+}
+
 function determineSuggestedApproach(messagePreference, clientHistory) {
   if (messagePreference.hasPreference && messagePreference.type === 'specific_professional') {
     return {
@@ -602,6 +691,9 @@ module.exports = {
   formatContextForAI,
   analyzeWithProfessionalPreferenceWithContext,
   buildAnalysisPrompt,
+  analyzeWithProductsAndProfessionals,
+  findMatchingProducts, // Opcional, mas bom para testes
+  extractKeywords,      // Opcional, mas bom para testes
   INTENTION_TYPES,
   INTENTION_KEYWORDS
 };

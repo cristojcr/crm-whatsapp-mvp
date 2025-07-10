@@ -35,7 +35,7 @@ const ChannelIcon = ({ type }) => {
 const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) => {
     // Estados do dashboard
     const [selectedChannel, setSelectedChannel] = useState('all');
-    const [activeTab, setActiveTab] = useState('multicanal'); // ✅ CORREÇÃO: Inicia na aba Dashboard
+    const [activeTab, setActiveTab] = useState('multicanais');
 
     // Estados dos profissionais
     const [professionals, setProfessionals] = useState([]);

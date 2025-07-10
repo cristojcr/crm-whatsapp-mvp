@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Plus, Calendar, Phone, Mail, X, Edit3, Trash2, Clock, MapPin, Star } from 'lucide-react';
-import ProductDashboard from '../products/ProductDashboard';
+import ProductDashboard from './products/ProductDashboard';
 
 // Nomes e Cores para cada canal
 const getChannelName = (type) => {
@@ -31,11 +31,11 @@ const ChannelIcon = ({ type }) => {
     return <span style={{ fontSize: '20px', lineHeight: 1 }}>{icons[type] || '💬'}</span>;
 };
 
-// ✅ COMPONENTE PRINCIPAL CORRIGIDO
+// ✅ COMPONENTE PRINCIPAL CORRIGIDO - SEM CONFLITOS DE AUTH
 const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) => {
     // Estados do dashboard
     const [selectedChannel, setSelectedChannel] = useState('all');
-    const [activeTab, setActiveTab] = useState('multicanal'); // ✅ CORREÇÃO: Inicia na aba Dashboard
+    const [activeTab, setActiveTab] = useState('multicanais');
 
     // Estados dos profissionais
     const [professionals, setProfessionals] = useState([]);
@@ -50,16 +50,12 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [professionalsLoading, setProfessionalsLoading] = useState(false);
     const [selectedProfessional, setSelectedProfessional] = useState(null);
-    
-    // Estados do Google Calendar
+    // Estados do Google Calendar (ID 2.17.2)
     const [calendarStatus, setCalendarStatus] = useState({});
     const [showCalendarModal, setShowCalendarModal] = useState(false);
     const [calendarEvents, setCalendarEvents] = useState([]);
     const [calendarLoading, setCalendarLoading] = useState(false);
     const [showSuccessNotification, setShowSuccessNotification] = useState(false);
-    
-    // 🆕 Estado para controle de conexão (SEM BANNER VISUAL)
-    const [connectionStatus, setConnectionStatus] = useState('checking'); // 'checking', 'connected', 'disconnected'
     
     const [newProfessional, setNewProfessional] = useState({
         name: '',
@@ -83,7 +79,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
         { id: 3, name: 'Pedro Costa', message: 'Obrigado pelo atendimento!', channel: 'telegram', unread: 0, date: '20/06/2025' },
     ]);
 
-    // ✅ FUNÇÃO MELHORADA - DETECÇÃO AUTOMÁTICA DA CHAVE SUPABASE
+    // ✅ FUNÇÃO CORRIGIDA - DETECÇÃO AUTOMÁTICA DA CHAVE SUPABASE
     const getAuthToken = () => {
         if (typeof window === 'undefined') return null;
         
@@ -167,18 +163,21 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
         }
     };
 
-    // ✅ VERIFICAÇÃO MELHORADA
+    // ✅ VERIFICAÇÃO SIMPLIFICADA - USA USER DO PAI
     const isAuthenticated = () => {
+        // Verificar se tem token
         const token = getAuthToken();
         if (!token) {
             console.warn('⚠️ Token não encontrado');
             return false;
         }
         
+        // Verificar se tem user (opcional)
         if (user && user.id) {
             return true;
         }
         
+        // Se não tem user prop, mas tem token válido, considerar autenticado
         console.log('✅ Token encontrado, considerando autenticado');
         return true;
     };
@@ -186,34 +185,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
     // ✅ NOVO USEEFFECT - DETECTAR CALLBACK OAUTH2
     useEffect(() => {
         handleOAuth2Callback();
-    }, []);
-
-    // ✅ NOVO USEEFFECT - VERIFICAR CONEXÃO COM BACKEND (SEM BANNER)
-    useEffect(() => {
-        checkBackendConnection();
-    }, []);
-
-    // ✅ NOVA FUNÇÃO - VERIFICAR CONEXÃO COM BACKEND (SILENCIOSA)
-    const checkBackendConnection = async () => {
-        setConnectionStatus('checking');
-        try {
-            const response = await fetch('http://localhost:3001/api/health', {
-                method: 'GET',
-                timeout: 5000
-            });
-            
-            if (response.ok) {
-                setConnectionStatus('connected');
-                console.log('✅ Backend conectado');
-            } else {
-                setConnectionStatus('disconnected');
-                console.warn('⚠️ Backend respondeu com erro');
-            }
-        } catch (error) {
-            setConnectionStatus('disconnected');
-            console.error('❌ Backend desconectado:', error.message);
-        }
-    };
+    }, []); // Executa apenas uma vez ao carregar componente
 
     // Carregar dados dos profissionais quando trocar para aba
     useEffect(() => {
@@ -225,12 +197,13 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                 loadProfessionalsData();
             } else {
                 console.warn('⚠️ Token não encontrado');
+                // Ainda assim, tentar carregar para debug
                 loadProfessionalsData();
             }
         }
-    }, [activeTab]);
+    }, [activeTab]); // Remover dependência do 'user'
 
-    // ✅ FUNÇÃO MELHORADA - VERSÃO COM TRATAMENTO DE ERRO ROBUSTO
+    // ✅ FUNÇÃO CORRIGIDA - VERSÃO COM LOGS DETALHADOS
     const makeAuthenticatedRequest = async (url, options = {}) => {
         console.log('🔧 makeAuthenticatedRequest chamada:', {
             url: url,
@@ -253,6 +226,13 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
 
         try {
             console.log('📤 Fazendo fetch para:', url);
+            console.log('📋 Options da requisição:', {
+                method: options.method || 'GET',
+                headers: {
+                    'Authorization': 'Bearer [TOKEN]',
+                    'Content-Type': 'application/json'
+                }
+            });
 
             const response = await fetch(url, {
                 ...options,
@@ -293,9 +273,6 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                 stack: error.stack,
                 url: url
             });
-            
-            // 🆕 Atualizar status de conexão (SEM BANNER)
-            setConnectionStatus('disconnected');
             return null;
         }
     };
@@ -307,82 +284,27 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
 
         setProfessionalsLoading(true);
         try {
-            // Carregar dados básicos primeiro
             await Promise.all([
                 loadProfessionals(),
                 loadPlanLimits(),
                 loadAppointmentStats()
             ]);
 
-            // ✅ CORREÇÃO: Carregar status do calendar APÓS carregar profissionais
-            // Aguardar um pouco para garantir que os profissionais foram carregados
-            setTimeout(async () => {
-                const currentProfessionals = professionals.length > 0 ? professionals : await getCurrentProfessionals();
-                
-                if (currentProfessionals && currentProfessionals.length > 0) {
-                    console.log('🔄 Carregando status do Google Calendar para todos os profissionais...');
-                    
-                    // Carregar status para cada profissional
-                    for (const prof of currentProfessionals) {
-                        await loadCalendarStatus(prof.id);
-                    }
-                    
-                    console.log('✅ Status do Google Calendar carregado para todos os profissionais');
-                }
-            }, 500); // Aguardar 500ms para garantir que os profissionais foram carregados
-            
+            // Carregar status do calendar para todos os profissionais
+            if (professionals.length > 0) {
+                professionals.forEach(prof => {
+                    loadCalendarStatus(prof.id);
+                });
+            }
         } catch (error) {
             console.error('❌ Erro ao carregar dados:', error);
         }
         setProfessionalsLoading(false);
     };
 
-    // ✅ NOVA FUNÇÃO: Obter profissionais atuais (para usar no timeout)
-    const getCurrentProfessionals = async () => {
-        try {
-            const response = await makeAuthenticatedRequest('http://localhost:3001/api/professionals?active_only=true');
-            
-            if (response && response.ok) {
-                const data = await response.json();
-                return data.data || [];
-            } else {
-                // Retornar dados mocados se não conseguir conectar
-                return [
-                    {
-                        id: 1,
-                        name: 'Dr. Julio Cristo',
-                        email: 'julio@clinica.com',
-                        phone: '(11) 99999-1111',
-                        specialty: 'Endodontia',
-                        google_calendar_email: 'julio.calendar@gmail.com'
-                    },
-                    {
-                        id: 2,
-                        name: 'Dra. Maria Silva',
-                        email: 'maria@clinica.com',
-                        phone: '(11) 99999-2222',
-                        specialty: 'Clínica Geral',
-                        google_calendar_email: 'maria.calendar@gmail.com'
-                    },
-                    {
-                        id: 3,
-                        name: 'Dr. Carlos Santos',
-                        email: 'carlos@clinica.com',
-                        phone: '(11) 99999-3333',
-                        specialty: 'Ortodontia',
-                        google_calendar_email: 'carlos.calendar@gmail.com'
-                    }
-                ];
-            }
-        } catch (error) {
-            console.error('❌ Erro ao obter profissionais:', error);
-            return [];
-        }
-    };
-
     const loadProfessionals = async () => {
         try {
-            const response = await makeAuthenticatedRequest('http://localhost:3001/api/professionals?active_only=true');
+            const response = await makeAuthenticatedRequest('http://localhost:3001/api/professionals');
             
             if (response && response.ok) {
                 const data = await response.json();
@@ -390,33 +312,6 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                 setProfessionalStats(prev => ({ 
                     ...prev, 
                     totalProfessionals: data.data?.length || 0 
-                }));
-                setConnectionStatus('connected');
-            } else {
-                // 🆕 Usar dados mocados quando não conseguir conectar
-                console.warn('⚠️ Usando dados mocados para profissionais');
-                const mockProfessionals = [
-                    {
-                        id: 1,
-                        name: 'Dr. Julio Cristo',
-                        email: 'julio@clinica.com',
-                        phone: '(11) 99999-1111',
-                        specialty: 'Endodontia',
-                        google_calendar_email: 'julio.calendar@gmail.com'
-                    },
-                    {
-                        id: 2,
-                        name: 'Dra. Maria Silva',
-                        email: 'maria@clinica.com',
-                        phone: '(11) 99999-2222',
-                        specialty: 'Clínica Geral',
-                        google_calendar_email: 'maria.calendar@gmail.com'
-                    }
-                ];
-                setProfessionals(mockProfessionals);
-                setProfessionalStats(prev => ({ 
-                    ...prev, 
-                    totalProfessionals: mockProfessionals.length 
                 }));
             }
         } catch (error) {
@@ -462,7 +357,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
         }
     };
 
-    // ✅ FUNÇÃO PARA ABRIR MODAL DE EDIÇÃO
+    // ✅ NOVA FUNÇÃO - ABRIR MODAL DE EDIÇÃO
     const handleEditProfessional = (professional) => {
         setSelectedProfessional(professional);
         setNewProfessional({
@@ -477,7 +372,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
         setShowEditModal(true);
     };
 
-    // ✅ FUNÇÃO PARA ABRIR MODAL DE EXCLUSÃO
+    // ✅ NOVA FUNÇÃO - ABRIR MODAL DE EXCLUSÃO COM LOGS
     const handleDeleteProfessional = (professional) => {
         console.log('🎯 handleDeleteProfessional chamada com:', {
             id: professional.id,
@@ -491,7 +386,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
         console.log('✅ Modal de delete configurado e aberto');
     };
 
-    // ✅ FUNÇÃO PARA CONFIRMAR EXCLUSÃO
+    // ✅ NOVA FUNÇÃO - CONFIRMAR EXCLUSÃO COM LOGS DETALHADOS
     const confirmDeleteProfessional = async () => {
         console.log('🚀 INICIANDO DELETE - Função chamada');
         
@@ -507,6 +402,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
             email: selectedProfessional.email
         });
 
+        // Verificar autenticação
         const token = getAuthToken();
         console.log('🔑 Token encontrado:', token ? 'SIM' : 'NÃO');
         
@@ -516,15 +412,15 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
             return;
         }
 
-        const updateUrl = `http://localhost:3001/api/professionals/${selectedProfessional.id}`;
-        console.log('🌐 URL da requisição:', updateUrl);
+        // Construir URL
+        const deleteUrl = `http://localhost:3001/api/professionals/${selectedProfessional.id}`;
+        console.log('🌐 URL da requisição:', deleteUrl);
 
         try {
-            console.log('📤 Enviando requisição PUT para marcar como inativo...');
+            console.log('📤 Enviando requisição DELETE...');
             
-            const response = await makeAuthenticatedRequest(updateUrl, {
-                method: 'PUT',
-                body: JSON.stringify({ is_active: false })
+            const response = await makeAuthenticatedRequest(deleteUrl, {
+                method: 'DELETE'
             });
 
             console.log('📥 Resposta recebida:', {
@@ -536,6 +432,8 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
             if (response && response.ok) {
                 console.log('✅ DELETE SUCESSO! Status:', response.status);
                 
+                // Recarregar dados e fechar modal
+                console.log('🔄 Recarregando dados...');
                 await loadProfessionalsData();
                 
                 console.log('🚪 Fechando modal...');
@@ -569,10 +467,11 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
         }
     };
 
-    // ✅ FUNÇÃO PARA SALVAR EDIÇÃO
+    // ✅ NOVA FUNÇÃO - SALVAR EDIÇÃO
     const handleUpdateProfessional = async () => {
         if (!selectedProfessional) return;
         
+        // Validação de campos obrigatórios
         if (!newProfessional.name || !newProfessional.email || !newProfessional.google_calendar_email) {
             alert('Por favor, preencha todos os campos obrigatórios: Nome, Email e Email do Google Calendar');
             return;
@@ -589,6 +488,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
             if (response && response.ok) {
                 console.log('✅ Profissional atualizado com sucesso!');
                 
+                // Recarregar dados e fechar modal
                 await loadProfessionalsData();
                 setShowEditModal(false);
                 setSelectedProfessional(null);
@@ -618,7 +518,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
         }
     };
 
-    // ✅ FUNÇÕES DO GOOGLE CALENDAR
+    // ✅ NOVAS FUNÇÕES - GOOGLE CALENDAR (ID 2.17.2)
     const handleConnectCalendar = async (professional) => {
         console.log('🔗 Conectando Google Calendar para:', professional.name);
         
@@ -631,8 +531,10 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                 const data = await response.json();
                 console.log('✅ URL de autorização gerada:', data.auth_url);
                 
+                // Abrir popup do Google OAuth2
                 window.open(data.auth_url, 'google-auth', 'width=500,height=600');
                 
+                // Aguardar callback e recarregar status
                 setTimeout(() => {
                     loadCalendarStatus(professional.id);
                 }, 3000);
@@ -672,8 +574,6 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
 
     const loadCalendarStatus = async (professionalId) => {
         try {
-            console.log(`🔄 Carregando status do Google Calendar para profissional ${professionalId}...`);
-            
             const response = await makeAuthenticatedRequest(`http://localhost:3001/api/calendar/status/${professionalId}`);
             
             if (response && response.ok) {
@@ -685,45 +585,20 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                         last_sync: data.professional?.last_sync
                     }
                 }));
-                console.log(`✅ Status carregado para profissional ${professionalId}:`, data.professional?.connected ? 'Conectado' : 'Desconectado');
-            } else {
-                // ✅ CORREÇÃO: Usar dados mocados quando offline
-                console.warn(`⚠️ Usando status mocado para profissional ${professionalId}`);
-                
-                // Simular alguns profissionais conectados
-                const mockConnectedIds = [1, 2]; // IDs dos profissionais que já estavam conectados
-                const isConnected = mockConnectedIds.includes(parseInt(professionalId));
-                
-                setCalendarStatus(prev => ({
-                    ...prev,
-                    [professionalId]: {
-                        connected: isConnected,
-                        last_sync: isConnected ? new Date().toISOString() : null
-                    }
-                }));
-                
-                console.log(`✅ Status mocado para profissional ${professionalId}:`, isConnected ? 'Conectado' : 'Desconectado');
             }
         } catch (error) {
             console.error('❌ Erro ao carregar status do calendar:', error);
-            
-            // ✅ FALLBACK: Definir status padrão em caso de erro
-            setCalendarStatus(prev => ({
-                ...prev,
-                [professionalId]: {
-                    connected: false,
-                    last_sync: null
-                }
-            }));
         }
     };
 
     const handleAddProfessional = async () => {
+        // Validação de campos obrigatórios
         if (!newProfessional.name || !newProfessional.email || !newProfessional.google_calendar_email) {
             alert('Por favor, preencha todos os campos obrigatórios: Nome, Email e Email do Google Calendar');
             return;
         }
         
+        // Validação de limite do plano
         if (planLimits.max !== -1 && professionals.length >= planLimits.max) {
             alert(`Plano ${planLimits.plan} permite apenas ${planLimits.max} profissional(is). Faça upgrade para adicionar mais.`);
             return;
@@ -740,6 +615,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
             if (response && response.ok) {
                 console.log('✅ Profissional adicionado com sucesso!');
                 
+                // Recarregar dados e fechar modal
                 await loadProfessionalsData();
                 setShowAddModal(false);
                 setNewProfessional({
@@ -768,7 +644,36 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
         }
     };
 
-    // ✅ LOADING CORRIGIDO
+    const handleCreateTelegramBot = async () => {
+        try {
+            console.log('🤖 Criando bot Telegram...');
+            
+            const response = await makeAuthenticatedRequest('http://localhost:3001/api/telegram-setup/create-bot', {
+                method: 'POST',
+                body: JSON.stringify(telegramData)
+            });
+
+            if (response && response.ok) {
+                const result = await response.json();
+                console.log('✅ Bot criado:', result);
+                
+                alert(`Bot criado com sucesso! 🎉\n\nBot: @${result.bot_info.username}\nEnvie /start para testar!`);
+                
+                setShowTelegramModal(false);
+                setTelegramData({ email: '', password: '', botName: '', botUsername: '' });
+                
+                // Recarregar canais
+                window.location.reload();
+            } else {
+                alert('Erro ao criar bot. Tente novamente.');
+            }
+        } catch (error) {
+            console.error('❌ Erro:', error);
+            alert('Erro de conexão. Verifique e tente novamente.');
+        }
+    };
+
+    // ✅ CORREÇÃO DO LOADING - ESTRUTURA JSX CORRIGIDA
     if (loading) {
         return (
             <div style={styles.loadingContainer}>
@@ -777,7 +682,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
         );
     }
 
-    // ✅ RETURN PRINCIPAL
+    // ✅ RETURN PRINCIPAL CORRIGIDO - ESTRUTURA JSX REORGANIZADA
     return (
         <div style={styles.container}>
             {/* ✅ NOTIFICAÇÃO DE SUCESSO OAUTH2 */}
@@ -802,8 +707,6 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                 </div>
             )}
 
-            {/* 🚫 BANNER DE CONEXÃO REMOVIDO - DETECÇÃO SILENCIOSA */}
-
             {/* Header */}
             <div style={styles.header}>
                 <h1 style={styles.title}>🚀 Dashboard Principal</h1>
@@ -817,7 +720,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                             }}
                             onClick={() => setActiveTab('multicanal')}
                         >
-                            📊 Dashboard
+                            🌐 Multicanal
                         </button>
                         <button 
                             style={{
@@ -838,10 +741,24 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                             📦 Produtos
                         </button>
                     </div>
+                    
+                    {/* Dropdown de canais (só na aba multicanal) */}
+                    {activeTab === 'multicanal' && (
+                        <select 
+                            style={styles.channelSelector}
+                            value={selectedChannel}
+                            onChange={(e) => setSelectedChannel(e.target.value)}
+                        >
+                            <option value="all">🌐 Todos os canais</option>
+                            {channels.map(ch => (
+                                <option key={ch.id} value={ch.channel_type}>{getChannelName(ch.channel_type)}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
             </div>
 
-            {/* ✅ CONTEÚDO BASEADO NA ABA ATIVA */}
+            {/* ✅ CONTEÚDO BASEADO NA ABA ATIVA - ESTRUTURA CORRIGIDA */}
             {activeTab === 'multicanal' && (
                 <>
                     {/* Cards de Métricas Multicanal */}
@@ -923,6 +840,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
             )}
 
             {activeTab === 'profissionais' && (
+                /* ✅ CONTEÚDO PROFISSIONAIS - COM BOTÕES EDITAR/DELETAR */
                 <>
                     {/* Plan Limits Banner */}
                     <div style={styles.planBanner}>
@@ -1014,32 +932,35 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                             <div style={styles.professionalsGrid}>
                                 {professionals.map((professional) => (
                                     <div key={professional.id} style={styles.professionalCard}>
-                                        {/* ✅ BOTÕES APENAS ÍCONES NO TOPO */}
+                                        {/* ✅ BOTÕES EDITAR E GOOGLE CALENDAR NO TOPO */}
                                         <div style={styles.cardActions}>
                                             <button
                                                 onClick={() => handleEditProfessional(professional)}
-                                                style={styles.iconButton}
+                                                style={styles.editButton}
                                                 title="Editar profissional"
                                             >
                                                 <Edit3 style={{width: '16px', height: '16px'}} />
+                                                Editar
                                             </button>
                                             
-                                            {/* BOTÃO GOOGLE CALENDAR */}
+                                            {/* 🆕 BOTÃO GOOGLE CALENDAR */}
                                             {calendarStatus[professional.id]?.connected ? (
                                                 <button
                                                     onClick={() => handleViewCalendar(professional)}
-                                                    style={styles.calendarIconButton}
+                                                    style={styles.calendarButton}
                                                     title="Ver agenda do Google Calendar"
                                                 >
                                                     <Calendar style={{width: '16px', height: '16px'}} />
+                                                    Ver Agenda
                                                 </button>
                                             ) : (
                                                 <button
                                                     onClick={() => handleConnectCalendar(professional)}
-                                                    style={styles.connectCalendarIconButton}
+                                                    style={styles.connectCalendarButton}
                                                     title="Conectar Google Calendar"
                                                 >
                                                     <Calendar style={{width: '16px', height: '16px'}} />
+                                                    Conectar Calendar
                                                 </button>
                                             )}
                                         </div>
@@ -1068,17 +989,18 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                                             </div>
                                         </div>
 
-                                        {/* ✅ BOTÃO DELETAR APENAS ÍCONE EMBAIXO */}
+                                        {/* ✅ BOTÃO DELETAR EMBAIXO */}
                                         <div style={styles.cardBottomActions}>
                                             <button
                                                 onClick={() => {
                                                     console.log('🗂️ BOTÃO REMOVER CLICADO! Profissional:', professional.name);
                                                     handleDeleteProfessional(professional);
                                                 }}
-                                                style={styles.deleteIconButton}
+                                                style={styles.deleteButton}
                                                 title="Remover profissional"
                                             >
                                                 <Trash2 style={{width: '16px', height: '16px'}} />
+                                                Remover
                                             </button>
                                         </div>
                                     </div>
@@ -1089,7 +1011,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                 </>
             )}
             
-            {/* ✅ BLOCO PARA PRODUTOS */}
+            {/* ✅ NOVO BLOCO PARA PRODUTOS */}
             {activeTab === 'produtos' && (
                 <ProductDashboard />
             )}
@@ -1187,7 +1109,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                 </div>
             )}
 
-            {/* Modal de Edição */}
+            {/* ✅ NOVO MODAL DE EDIÇÃO */}
             {showEditModal && selectedProfessional && (
                 <div style={styles.modalOverlay}>
                     <div style={styles.modalContent}>
@@ -1280,7 +1202,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                 </div>
             )}
 
-            {/* Modal de Visualização do Calendário */}
+            {/* ✅ MODAL DE VISUALIZAÇÃO DO CALENDÁRIO */}
             {showCalendarModal && selectedProfessional && (
                 <div style={styles.modalOverlay}>
                     <div style={{...styles.modalContent, maxWidth: '700px'}}>
@@ -1447,7 +1369,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
                 </div>
             )}
             
-            {/* Modal de Confirmação de Exclusão */}
+            {/* ✅ NOVO MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
             {showDeleteModal && selectedProfessional && (
                 <div style={styles.modalOverlay}>
                     <div style={styles.modalContent}>
@@ -1504,7 +1426,7 @@ const MultiChannelDashboard = ({ channels = [], loading = false, user = null }) 
     );
 };
 
-// ✅ ESTILOS ATUALIZADOS COM NOVOS BOTÕES APENAS ÍCONES (SEM BANNER OFFLINE)
+// ✅ ESTILOS PREMIUM + NOVOS ESTILOS PARA BOTÕES
 const styles = {
     container: { 
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', 
@@ -1567,8 +1489,6 @@ const styles = {
         backdropFilter: 'blur(10px)',
         color: '#667eea'
     },
-
-    // 🚫 BANNER DE CONEXÃO REMOVIDO
 
     // Banners
     planBanner: {
@@ -1792,7 +1712,7 @@ const styles = {
         color: '#6b7280'
     },
 
-    // ✅ NOVOS ESTILOS PARA BOTÕES APENAS ÍCONES
+    // ✅ NOVOS ESTILOS PARA AÇÕES DOS CARDS
     cardActions: {
         display: 'flex',
         justifyContent: 'flex-end',
@@ -1807,65 +1727,67 @@ const styles = {
         paddingTop: '12px',
         borderTop: '1px solid #e5e7eb'
     },
-    iconButton: {
+    editButton: {
         background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
         color: 'white',
         border: 'none',
-        padding: '8px',
+        padding: '8px 12px',
         borderRadius: '8px',
+        fontSize: '12px',
+        fontWeight: '600',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
+        gap: '6px',
         boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3)',
-        transition: 'all 0.2s ease',
-        width: '32px',
-        height: '32px'
+        transition: 'all 0.2s ease'
     },
-    deleteIconButton: {
+    deleteButton: {
         background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
         color: 'white',
         border: 'none',
-        padding: '8px',
+        padding: '8px 12px',
         borderRadius: '8px',
+        fontSize: '12px',
+        fontWeight: '600',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
+        gap: '6px',
         boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
-        transition: 'all 0.2s ease',
-        width: '32px',
-        height: '32px'
+        transition: 'all 0.2s ease'
     },
-    calendarIconButton: {
+    calendarButton: {
         background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
         color: 'white',
         border: 'none',
-        padding: '8px',
+        padding: '8px 12px',
         borderRadius: '8px',
+        fontSize: '12px',
+        fontWeight: '600',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
+        gap: '6px',
         boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
         transition: 'all 0.2s ease',
-        width: '32px',
-        height: '32px'
+        marginLeft: '8px'
     },
-    connectCalendarIconButton: {
+    connectCalendarButton: {
         background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
         color: 'white',
         border: 'none',
-        padding: '8px',
+        padding: '8px 12px',
         borderRadius: '8px',
+        fontSize: '12px',
+        fontWeight: '600',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
+        gap: '6px',
         boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
         transition: 'all 0.2s ease',
-        width: '32px',
-        height: '32px'
+        marginLeft: '8px'
     },
 
     // Botões
@@ -2043,6 +1965,21 @@ const styles = {
         fontSize: '14px',
         fontWeight: '600',
         cursor: 'pointer'
+    },
+    telegramButton: {
+        background: 'linear-gradient(135deg, #0088CC 0%, #005FA3 100%)',
+        color: 'white',
+        border: 'none',
+        padding: '12px 20px',
+        borderRadius: '12px',
+        fontSize: '14px',
+        fontWeight: '600',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        boxShadow: '0 4px 15px rgba(0,136,204,0.3)',
+        transition: 'all 0.2s ease'
     }
 };
 

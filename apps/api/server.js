@@ -357,6 +357,8 @@ app.use('/api/users', userRoutes);
 // Rotas de profissionais (ID 2.17) - PROTEGIDAS
 app.use('/api/professionals', professionalsRoutes);
 // Rotas do Google Calendar Multi-Profissional (ID 2.17.2)
+// Rotas de produts (ID 2.18)
+app.use('/api/products', require('./src/routes/products'));
 app.use('/api/calendar', require('./src/routes/calendar'));
 
 // Rotas de subscription (limites de plano) - PROTEGIDAS  
