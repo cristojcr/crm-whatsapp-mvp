@@ -21,7 +21,6 @@ const ProductDashboard = () => {
     duration_minutes: 60,
     professional_id: '',
     link_url: '',
-    link_label: '',
     status: 'active'
   });
 
@@ -109,7 +108,6 @@ const ProductDashboard = () => {
       duration_minutes: 60,
       professional_id: '',
       link_url: '',
-      link_label: '',
       status: 'active'
     });
     setShowModal(true);
@@ -125,7 +123,6 @@ const ProductDashboard = () => {
       duration_minutes: product.duration_minutes || 60,
       professional_id: product.professional_id || '',
       link_url: product.link_url || '',
-      link_label: product.link_label || '',
       status: product.active ? 'active' : 'inactive'
     });
     setShowModal(true);
@@ -142,7 +139,6 @@ const ProductDashboard = () => {
       duration_minutes: 60,
       professional_id: '',
       link_url: '',
-      link_label: '',
       status: 'active'
     });
   };
@@ -169,7 +165,6 @@ const ProductDashboard = () => {
         duration_minutes: parseInt(formData.duration_minutes) || 60,
         professional_id: professionalId,
         link_url: formData.link_url?.trim() || null,
-        link_label: formData.link_label?.trim() || null,
         active: formData.status === 'active'
       };
 
@@ -642,7 +637,7 @@ const ProductDashboard = () => {
                         rel="noopener noreferrer"
                         style={{color: '#3b82f6', textDecoration: 'none'}}
                       >
-                        {product.link_label || 'Link'}
+                        Link
                       </a>
                     ) : '-'}
                   </td>
@@ -772,29 +767,16 @@ const ProductDashboard = () => {
                 </div>
               </div>
 
-              {/* CAMPOS LINK E LABEL */}
-              <div style={{display: 'flex', gap: '16px'}}>
-                <div style={{...styles.inputGroup, flex: 1}}>
-                  <label style={styles.label}>Link</label>
-                  <input
-                    type="url"
-                    value={formData.link_url}
-                    onChange={(e) => setFormData({...formData, link_url: e.target.value})}
-                    style={styles.input}
-                    placeholder="https://exemplo.com"
-                  />
-                </div>
-                
-                <div style={{...styles.inputGroup, flex: 1}}>
-                  <label style={styles.label}>Label do Link</label>
-                  <input
-                    type="text"
-                    value={formData.link_label || ''}
-                    onChange={(e) => setFormData({...formData, link_label: e.target.value})}
-                    style={styles.input}
-                    placeholder="Ex: Mais Info, Agendar"
-                  />
-                </div>
+              {/* CAMPO LINK */}
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Link</label>
+                <input
+                  type="url"
+                  value={formData.link_url}
+                  onChange={(e) => setFormData({...formData, link_url: e.target.value})}
+                  style={styles.input}
+                  placeholder="https://exemplo.com"
+                />
               </div>
               
               <div style={styles.inputGroup}>

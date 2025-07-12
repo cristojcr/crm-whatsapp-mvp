@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Filter, X } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { Plus, Edit2, Trash2, Search, Filter } from 'lucide-react';
+import { supabase } from '../../lib/supabase'; // ✅ Caminho corrigido
 
 const ProductDashboard = () => {
   // --- ESTADOS DO COMPONENTE ---
   const [products, setProducts] = useState([]);
-  const [professionals, setProfessionals] = useState([]);
+  const [professionals, setProfessionals] = useState([]); // Para o dropdown
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -19,9 +19,9 @@ const ProductDashboard = () => {
     category: '',
     price: '',
     duration_minutes: 60,
-    professional_id: '',
-    link_url: '',
-    link_label: '',
+    professional_id: '', // ✅ Campo profissional adicionado
+    link_url: '', // ✅ Campo link adicionado
+    link_label: '', // ✅ Campo label do link adicionado
     status: 'active'
   });
 
@@ -32,25 +32,38 @@ const ProductDashboard = () => {
 
   const loadInitialData = async () => {
     setLoading(true);
-    await Promise.all([loadProfessionals(), loadProducts()]);
+    await loadProfessionals();
+    await loadProducts();
     setLoading(false);
   };
 
-  // ✅ CARREGAR PROFISSIONAIS DIRETO DO SUPABASE
+  // ✅ CARREGAR PROFISSIONAIS REAIS DO SUPABASE
   const loadProfessionals = async () => {
     try {
-      const { data, error } = await supabase
-        .from('professionals')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-
-      if (error) {
-        console.error('Erro ao carregar profissionais:', error);
+      // ✅ Obter token da sessão do Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        console.warn('Token não encontrado na sessão');
         setProfessionals([]);
+        return;
+      }
+      
+      const response = await fetch('http://localhost:3001/api/professionals', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Profissionais carregados:', data.data?.length || 0);
+        setProfessionals(data.data || []);
       } else {
-        console.log('✅ Profissionais carregados:', data?.length || 0);
-        setProfessionals(data || []);
+        console.warn('Erro ao carregar profissionais, status:', response.status);
+        setProfessionals([]);
       }
     } catch (error) {
       console.error('Erro ao carregar profissionais:', error);
@@ -58,28 +71,33 @@ const ProductDashboard = () => {
     }
   };
 
-  // ✅ CARREGAR PRODUTOS DIRETO DO SUPABASE
+  // ✅ CARREGAR PRODUTOS REAIS DO SUPABASE
   const loadProducts = async () => {
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select(`
-          *,
-          professionals!professional_id(name)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Erro ao carregar produtos:', error);
+      // ✅ Obter token da sessão do Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        console.warn('Token não encontrado na sessão');
         setProducts([]);
+        return;
+      }
+      
+      const response = await fetch('http://localhost:3001/api/products', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Produtos carregados:', data.data?.length || 0);
+        setProducts(data.data || []);
       } else {
-        console.log('✅ Produtos carregados:', data?.length || 0);
-        // Mapear dados para incluir nome do profissional
-        const productsWithProfessional = data?.map(product => ({
-          ...product,
-          professional_name: product.professionals?.name || 'Não atribuído'
-        })) || [];
-        setProducts(productsWithProfessional);
+        console.warn('Erro ao carregar produtos, status:', response.status);
+        setProducts([]);
       }
     } catch (error) {
       console.error('Erro ao carregar produtos:', error);
@@ -89,7 +107,7 @@ const ProductDashboard = () => {
 
   // --- LÓGICA DE FILTRO E BUSCA ---
   const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           product.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = !filterCategory || product.category === filterCategory;
     return matchesSearch && matchesCategory;
@@ -107,9 +125,9 @@ const ProductDashboard = () => {
       category: '',
       price: '',
       duration_minutes: 60,
-      professional_id: '',
-      link_url: '',
-      link_label: '',
+      professional_id: '', // ✅ Campo profissional
+      link_url: '', // ✅ Campo link
+      link_label: '', // ✅ Campo label do link
       status: 'active'
     });
     setShowModal(true);
@@ -118,15 +136,15 @@ const ProductDashboard = () => {
   const openEditModal = (product) => {
     setEditingProduct(product);
     setFormData({
-      name: product.name || '',
-      description: product.description || '',
-      category: product.category || '',
-      price: product.price || '',
-      duration_minutes: product.duration_minutes || 60,
-      professional_id: product.professional_id || '',
-      link_url: product.link_url || '',
-      link_label: product.link_label || '',
-      status: product.active ? 'active' : 'inactive'
+      name: product.name,
+      description: product.description,
+      category: product.category,
+      price: product.price,
+      duration_minutes: product.duration_minutes,
+      professional_id: product.professional_id || '', // ✅ Campo profissional
+      link_url: product.link_url || '', // ✅ Campo link
+      link_label: product.link_label || '', // ✅ Campo label do link
+      status: product.status
     });
     setShowModal(true);
   };
@@ -140,124 +158,128 @@ const ProductDashboard = () => {
       category: '',
       price: '',
       duration_minutes: 60,
-      professional_id: '',
-      link_url: '',
-      link_label: '',
+      professional_id: '', // ✅ Campo profissional
+      link_url: '', // ✅ Campo link
+      link_label: '', // ✅ Campo label do link
       status: 'active'
     });
   };
 
-  // ✅ SALVAR DIRETO NO SUPABASE
+  // ✅ SALVAR NO SUPABASE
   const handleSave = async () => {
     if (!formData.name.trim()) {
       alert('Nome do produto é obrigatório');
       return;
     }
-
+    
     try {
-      // ✅ Tratar professional_id corretamente
-      let professionalId = null;
-      if (formData.professional_id && formData.professional_id !== '' && formData.professional_id !== 'all') {
-        professionalId = formData.professional_id;
+      // ✅ Obter token da sessão do Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        alert('Erro de autenticação. Faça login novamente.');
+        return;
       }
-
+      
       const productData = {
-        name: formData.name.trim(),
-        description: formData.description?.trim() || null,
-        category: formData.category?.trim() || null,
-        price: formData.price ? parseFloat(formData.price) : null,
+        name: formData.name,
+        description: formData.description,
+        category: formData.category,
+        price: parseFloat(formData.price) || 0,
         duration_minutes: parseInt(formData.duration_minutes) || 60,
-        professional_id: professionalId,
-        link_url: formData.link_url?.trim() || null,
-        link_label: formData.link_label?.trim() || null,
+        professional_id: formData.professional_id === 'all' ? null : formData.professional_id,
+        link_url: formData.link_url,
+        link_label: formData.link_label,
         active: formData.status === 'active'
       };
 
-      console.log('💾 Salvando produto:', productData);
-
       if (editingProduct) {
-        // ✅ EDITAR PRODUTO
-        const { error } = await supabase
-          .from('products')
-          .update(productData)
-          .eq('id', editingProduct.id);
+        // ✅ EDITAR NO SUPABASE
+        const response = await fetch(`http://localhost:3001/api/products/${editingProduct.id}`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(productData)
+        });
 
-        if (error) {
-          console.error('❌ Erro ao editar produto:', error);
-          alert('Erro ao editar produto: ' + error.message);
-          return;
+        if (response.ok) {
+          await loadProducts(); // Recarregar da API
+          alert('Produto atualizado com sucesso!');
+        } else {
+          const errorData = await response.text();
+          console.error('Erro ao atualizar:', errorData);
+          throw new Error('Erro ao atualizar produto');
         }
-
-        console.log('✅ Produto editado com sucesso!');
-        alert('Produto editado com sucesso!');
       } else {
-        // ✅ CRIAR PRODUTO
-        const { error } = await supabase
-          .from('products')
-          .insert([productData]);
+        // ✅ CRIAR NO SUPABASE
+        const response = await fetch('http://localhost:3001/api/products', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(productData)
+        });
 
-        if (error) {
-          console.error('❌ Erro ao criar produto:', error);
-          alert('Erro ao criar produto: ' + error.message);
-          return;
+        if (response.ok) {
+          await loadProducts(); // Recarregar da API
+          alert('Produto criado com sucesso!');
+        } else {
+          const errorData = await response.text();
+          console.error('Erro ao criar:', errorData);
+          throw new Error('Erro ao criar produto');
         }
-
-        console.log('✅ Produto criado com sucesso!');
-        alert('Produto criado com sucesso!');
       }
-
-      // ✅ Recarregar produtos e fechar modal SEMPRE após sucesso
-      await loadProducts();
+      
       closeModal();
-
     } catch (error) {
-      console.error('❌ Erro inesperado ao salvar produto:', error);
-      alert('Erro inesperado ao salvar produto: ' + error.message);
+      console.error('Erro ao salvar produto:', error);
+      alert('Erro ao salvar produto. Verifique sua conexão.');
     }
   };
 
-  // ✅ DELETAR DIRETO DO SUPABASE
-  const handleDelete = async (productId) => {
-    if (!window.confirm('Tem certeza que deseja excluir este produto?')) {
+  // ✅ DELETAR NO SUPABASE
+  const handleDelete = async (id) => {
+    if (!confirm('Tem certeza que deseja deletar este produto?')) {
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', productId);
-
-      if (error) {
-        console.error('Erro ao deletar produto:', error);
-        alert('Erro ao deletar produto: ' + error.message);
+      // ✅ Obter token da sessão do Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      if (!token) {
+        alert('Erro de autenticação. Faça login novamente.');
         return;
       }
+      
+      const response = await fetch(`http://localhost:3001/api/products/${id}`, {
+        method: 'DELETE',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
-      alert('Produto deletado com sucesso!');
-      await loadProducts(); // Recarregar lista
-
+      if (response.ok) {
+        await loadProducts(); // Recarregar da API
+        alert('Produto deletado com sucesso!');
+      } else {
+        const errorData = await response.text();
+        console.error('Erro ao deletar:', errorData);
+        throw new Error('Erro ao deletar produto');
+      }
     } catch (error) {
       console.error('Erro ao deletar produto:', error);
-      alert('Erro inesperado ao deletar produto');
+      alert('Erro ao deletar produto. Verifique sua conexão.');
     }
   };
 
-  // --- FUNÇÃO PARA OBTER NOME DO PROFISSIONAL ---
-  const getProfessionalName = (product) => {
-    if (product.professional_name) {
-      return product.professional_name;
-    }
-    
-    if (product.professional_id === 'all') {
-      return 'Todos os profissionais';
-    }
-    
-    const professional = professionals.find(prof => prof.id === product.professional_id);
-    return professional?.name || 'Não atribuído';
-  };
-
-  // --- ESTILOS ---
+  // --- ESTILOS SEGUINDO O MODELO DE REFERÊNCIA ---
   const styles = {
     container: {
       padding: '24px',
@@ -536,22 +558,30 @@ const ProductDashboard = () => {
     }
   };
 
-  // --- RENDERIZAÇÃO ---
+  // Spinner CSS
+  const spinnerCSS = `
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  `;
+
+  // Loading
   if (loading) {
     return (
-      <div style={styles.spinner}>
-        <div style={styles.spinnerElement}></div>
-        <style>{`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
+      <div style={styles.container}>
+        <style>{spinnerCSS}</style>
+        <div style={styles.spinner}>
+          <div style={styles.spinnerElement}></div>
+        </div>
       </div>
     );
   }
 
   return (
     <div style={styles.container}>
+      <style>{spinnerCSS}</style>
+      
       {/* Header */}
       <div style={styles.header}>
         <div>
@@ -630,7 +660,7 @@ const ProductDashboard = () => {
                     <div style={styles.productName}>{product.name}</div>
                     <div style={styles.productDescription}>{product.description}</div>
                   </td>
-                  <td style={styles.td}>{getProfessionalName(product)}</td>
+                  <td style={styles.td}>{product.professional || 'Não atribuído'}</td>
                   <td style={styles.td}>{product.category || '-'}</td>
                   <td style={styles.td}>{product.price ? `R$ ${product.price}` : '-'}</td>
                   <td style={styles.td}>{product.duration_minutes ? `${product.duration_minutes} min` : '-'}</td>
@@ -649,9 +679,9 @@ const ProductDashboard = () => {
                   <td style={styles.td}>
                     <span style={{
                       ...styles.statusBadge,
-                      ...(product.active ? styles.statusActive : styles.statusInactive)
+                      ...(product.status === 'active' ? styles.statusActive : styles.statusInactive)
                     }}>
-                      {product.active ? 'Ativo' : 'Inativo'}
+                      {product.status === 'active' ? 'Ativo' : 'Inativo'}
                     </span>
                   </td>
                   <td style={styles.td}>
@@ -691,7 +721,7 @@ const ProductDashboard = () => {
                 onClick={closeModal}
                 style={styles.modalCloseButton}
               >
-                <X size={20} />
+                ×
               </button>
             </div>
             
@@ -729,22 +759,29 @@ const ProductDashboard = () => {
                 />
               </div>
 
-              {/* CAMPO PROFISSIONAL */}
+              {/* ✅ CAMPO PROFISSIONAL COM DEBUG */}
               <div style={styles.inputGroup}>
-                <label style={styles.label}>Profissional</label>
+                <label style={styles.label}>
+                  Profissional ({professionals.length} disponíveis)
+                </label>
                 <select
                   value={formData.professional_id}
                   onChange={(e) => setFormData({...formData, professional_id: e.target.value})}
                   style={styles.input}
                 >
                   <option value="">Selecione um profissional</option>
-                  <option value="all">🌟 Todos os profissionais</option>
+                  <option value="all">Todos os profissionais</option>
                   {professionals.map(professional => (
                     <option key={professional.id} value={professional.id}>
                       {professional.name}
                     </option>
                   ))}
                 </select>
+                {professionals.length === 0 && (
+                  <small style={{color: '#ef4444', fontSize: '12px'}}>
+                    Nenhum profissional encontrado. Verifique a aba Profissionais.
+                  </small>
+                )}
               </div>
               
               <div style={{display: 'flex', gap: '16px'}}>
@@ -772,7 +809,7 @@ const ProductDashboard = () => {
                 </div>
               </div>
 
-              {/* CAMPOS LINK E LABEL */}
+              {/* ✅ CAMPOS LINK E LABEL */}
               <div style={{display: 'flex', gap: '16px'}}>
                 <div style={{...styles.inputGroup, flex: 1}}>
                   <label style={styles.label}>Link</label>
@@ -789,7 +826,7 @@ const ProductDashboard = () => {
                   <label style={styles.label}>Label do Link</label>
                   <input
                     type="text"
-                    value={formData.link_label || ''}
+                    value={formData.link_label}
                     onChange={(e) => setFormData({...formData, link_label: e.target.value})}
                     style={styles.input}
                     placeholder="Ex: Mais Info, Agendar"
@@ -833,4 +870,3 @@ const ProductDashboard = () => {
 };
 
 export default ProductDashboard;
-
