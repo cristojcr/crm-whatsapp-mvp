@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabase';
-import { LayoutDashboard, Settings, CalendarDays, LogOut } from 'lucide-react'; // Importar ícones
+import { LayoutDashboard, Settings, CalendarDays, LogOut, Users } from 'lucide-react';
 
 import MultiChannelDashboard from '../../components/dashboard/MultiChannelDashboard';
+import ProfessionalDashboard from '../../components/professionals/ProfessionalDashboard';
 import ChannelSettings from '../../components/settings/ChannelSettings';
-import CalendarGlobal from '../../components/Global Calendar/CalendarGlobal'; // Importar o novo componente
+import CalendarGlobal from '../../components/Global Calendar/CalendarGlobal';
 
 export default function MultiCanalPage() {
     const router = useRouter();
@@ -92,7 +93,6 @@ export default function MultiCanalPage() {
         checkUserConsents();
     }, [user, consentsChecked, checkingConsents]);
 
-    // ✅ EFEITO PARA BUSCAR OS CANAIS QUANDO O USUÁRIO FOR DEFINIDO E CONSENTIMENTOS VERIFICADOS
     // ✅ EFEITO PARA BUSCAR OS CANAIS (SEM DEPENDÊNCIA DE CONSENTIMENTOS)
     useEffect(() => {
         const loadChannels = async () => {
@@ -475,19 +475,21 @@ export default function MultiCanalPage() {
                 )}
                 
                 {activeTab === 'professionals' && (
-                    <MultiChannelDashboard 
-                        channels={channels} 
-                        loading={channelsLoading}
-                        user={user}
-                        onLogout={handleLogout}
-                        onChannelsUpdate={handleChannelsUpdate}
+                    <ProfessionalDashboard 
+                        showNotification={(message, type) => {
+                            // Implementar sistema de notificação se necessário
+                            console.log(`${type}: ${message}`);
+                        }}
                     />
                 )}
 
                 {activeTab === 'calendar' && (
                     <CalendarGlobal 
                         user={user}
-                        showNotification={() => { /* Implementar notificação */ }}
+                        showNotification={(message, type) => {
+                            // Implementar sistema de notificação se necessário
+                            console.log(`${type}: ${message}`);
+                        }}
                     />
                 )}
 

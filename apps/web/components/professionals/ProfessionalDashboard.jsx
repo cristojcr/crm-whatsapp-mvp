@@ -1,5 +1,3 @@
-
-
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit3, Trash2, Calendar, RefreshCw, Users, TrendingUp, Clock, X, Save, Lock, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -72,7 +70,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
     scalabotsPurple: '#8B5CF6'
   };
 
-  // ✅ ESTILOS ATUALIZADOS
+  // ✅ ESTILOS ATUALIZADOS - CARDS MENORES E LADO A LADO
   const styles = {
     container: {
       padding: '24px',
@@ -141,14 +139,22 @@ const ProfessionalDashboard = ({ showNotification }) => {
       margin: 0,
       fontWeight: '600'
     },
+    // ✅ GRID DOS PROFISSIONAIS - CARDS MENORES E LADO A LADO
+    professionalsGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', // Cards menores
+      gap: '16px', // Gap menor
+      marginBottom: '32px'
+    },
     professionalCard: {
       background: 'rgba(255, 255, 255, 0.08)',
       backdropFilter: 'blur(12px)',
       border: '1px solid rgba(255, 255, 255, 0.12)',
-      borderRadius: '16px',
-      padding: '24px',
+      borderRadius: '12px', // Bordas menores
+      padding: '16px', // Padding menor
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-      cursor: 'pointer'
+      cursor: 'pointer',
+      minHeight: '180px' // Altura mínima menor
     },
     professionalCardHover: {
       background: 'rgba(255, 255, 255, 0.75)',
@@ -163,42 +169,46 @@ const ProfessionalDashboard = ({ showNotification }) => {
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
-      marginBottom: '16px'
+      marginBottom: '12px' // Margem menor
     },
     professionalName: {
-      fontSize: '18px',
+      fontSize: '16px', // Fonte menor
       fontWeight: '600',
       margin: '0 0 4px 0',
       transition: 'color 0.2s ease'
     },
     professionalSpecialty: {
-      fontSize: '14px',
+      fontSize: '13px', // Fonte menor
       margin: 0,
       transition: 'color 0.2s ease'
     },
     professionalInfo: {
-      marginBottom: '16px'
+      marginBottom: '12px' // Margem menor
     },
     professionalDetail: {
-      fontSize: '13px',
-      margin: '4px 0',
+      fontSize: '12px', // Fonte menor
+      margin: '3px 0', // Margem menor
       display: 'flex',
       alignItems: 'center',
-      gap: '8px',
+      gap: '6px', // Gap menor
       transition: 'color 0.2s ease'
     },
     actionButton: {
       background: 'rgba(255, 255, 255, 0.1)',
       border: '1px solid rgba(255, 255, 255, 0.2)',
-      borderRadius: '8px',
-      width: '36px',
-      height: '36px',
+      borderRadius: '6px', // Bordas menores
+      width: '28px', // Botões menores
+      height: '28px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       cursor: 'pointer',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       color: 'rgba(255, 255, 255, 0.8)'
+    },
+    actionButtonsContainer: {
+      display: 'flex',
+      gap: '6px' // Gap menor entre botões
     },
     editButton: {
       background: 'rgba(52, 152, 219, 0.1)',
@@ -210,29 +220,29 @@ const ProfessionalDashboard = ({ showNotification }) => {
       background: '#3498db',
       color: 'white',
       borderColor: '#3498db',
-      boxShadow: '0 8px 25px rgba(52, 152, 219, 0.6), 0 0 20px rgba(52, 152, 219, 0.4)',
-      transform: 'scale(1.1) translateY(-2px)'
+      boxShadow: '0 4px 15px rgba(52, 152, 219, 0.4)', // Sombra menor
+      transform: 'scale(1.05) translateY(-1px)' // Transformação menor
     },
     calendarButtonHover: {
       background: '#00A693',
       color: 'white',
       borderColor: '#00A693',
-      boxShadow: '0 8px 25px rgba(0, 166, 147, 0.6), 0 0 20px rgba(0, 166, 147, 0.4)',
-      transform: 'scale(1.1) translateY(-2px)'
+      boxShadow: '0 4px 15px rgba(0, 166, 147, 0.4)',
+      transform: 'scale(1.05) translateY(-1px)'
     },
     calendarButtonDisconnectedHover: {
       background: '#ffc107',
       color: 'white',
       borderColor: '#ffc107',
-      boxShadow: '0 8px 25px rgba(255, 193, 7, 0.6), 0 0 20px rgba(255, 193, 7, 0.4)',
-      transform: 'scale(1.1) translateY(-2px)'
+      boxShadow: '0 4px 15px rgba(255, 193, 7, 0.4)',
+      transform: 'scale(1.05) translateY(-1px)'
     },
     deleteButtonHover: {
       background: '#e74c3c',
       color: 'white',
       borderColor: '#e74c3c',
-      boxShadow: '0 8px 25px rgba(231, 76, 60, 0.6), 0 0 20px rgba(231, 76, 60, 0.4)',
-      transform: 'scale(1.1) translateY(-2px)'
+      boxShadow: '0 4px 15px rgba(231, 76, 60, 0.4)',
+      transform: 'scale(1.05) translateY(-1px)'
     },
     modal: {
       position: 'fixed',
@@ -373,33 +383,102 @@ const ProfessionalDashboard = ({ showNotification }) => {
       borderRadius: '20px',
       padding: '32px',
       width: '100%',
-      maxWidth: '700px',
+      maxWidth: '900px', // Modal maior para o calendário
       maxHeight: '90vh',
       overflow: 'auto'
     },
-    eventItem: {
+    // ✅ ESTILOS PARA O CALENDÁRIO INDIVIDUAL
+    calendarGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(7, 1fr)',
+      gap: '1px',
+      background: 'rgba(255, 255, 255, 0.1)',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      marginBottom: '20px'
+    },
+    calendarDay: {
+      minHeight: '60px', // Altura menor para os dias
+      padding: '6px',
       background: 'rgba(255, 255, 255, 0.05)',
-      border: '1px solid rgba(255, 255, 255, 0.1)',
-      borderRadius: '12px',
-      padding: '16px',
-      marginBottom: '12px'
+      cursor: 'pointer',
+      position: 'relative',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between'
     },
-    eventTitle: {
-      fontSize: '16px',
-      fontWeight: '600',
-      color: 'rgba(255, 255, 255, 0.95)',
-      marginBottom: '8px'
+    calendarDayNumber: {
+      fontSize: '12px',
+      fontWeight: '500',
+      color: 'white'
     },
-    eventTime: {
+    // ✅ ESTILOS PARA EVENTOS NO CALENDÁRIO - APENAS NOME
+    eventInDay: {
+      background: '#00A693',
+      borderRadius: '3px',
+      padding: '2px 4px',
+      fontSize: '10px',
+      color: 'white',
+      marginTop: '2px',
+      cursor: 'pointer',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      maxWidth: '100%'
+    },
+    // ✅ POPUP PEQUENO PARA DETALHES DO EVENTO
+    eventPopup: {
+      position: 'absolute',
+      background: 'rgba(28, 27, 31, 0.98)',
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      borderRadius: '8px',
+      padding: '12px',
+      zIndex: 1001,
+      minWidth: '200px',
+      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+      color: 'white'
+    },
+    eventPopupTitle: {
       fontSize: '14px',
-      color: 'rgba(255, 255, 255, 0.7)',
+      fontWeight: '600',
+      marginBottom: '8px',
+      color: 'white'
+    },
+    eventPopupDetail: {
+      fontSize: '12px',
+      color: 'rgba(255, 255, 255, 0.8)',
       marginBottom: '4px'
     },
-    eventDescription: {
-      fontSize: '13px',
-      color: 'rgba(255, 255, 255, 0.6)'
+    button: {
+      background: 'linear-gradient(135deg, #6D4AFF 0%, #00A693 100%)',
+      border: 'none',
+      borderRadius: '8px',
+      padding: '8px 16px',
+      color: 'white',
+      fontSize: '14px',
+      fontWeight: '500',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px'
+    },
+    secondaryButton: {
+      background: 'rgba(255, 255, 255, 0.1)',
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      borderRadius: '8px',
+      padding: '8px 16px',
+      color: 'rgba(255, 255, 255, 0.8)',
+      fontSize: '14px',
+      fontWeight: '500',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px'
     }
   };
+
+  // ✅ ESTADO PARA POPUP DE EVENTO
+  const [eventPopup, setEventPopup] = useState(null);
 
   // ✅ TODAS AS FUNÇÕES MANTIDAS IGUAIS (getAuthToken, isAuthenticated, etc.)
   const getAuthToken = () => {
@@ -706,60 +785,6 @@ const ProfessionalDashboard = ({ showNotification }) => {
       setCalendarLoading(prev => ({ ...prev, [professional.id]: false }));
   };
 
-  const renderCalendarButton = (professional) => {
-    const status = calendarStatus[professional.id];
-    const isLoading = calendarLoading[professional.id];
-    const isStatusLoading = status === undefined;
-    
-    return (
-      <button 
-        style={{
-          ...styles.actionButton,
-          background: status?.connected 
-            ? 'rgba(0, 166, 147, 0.2)' 
-            : isStatusLoading 
-              ? 'rgba(255, 255, 255, 0.1)'
-              : 'rgba(255, 193, 7, 0.15)',
-          borderColor: status?.connected 
-            ? 'rgba(0, 166, 147, 0.4)' 
-            : isStatusLoading 
-              ? 'rgba(255, 255, 255, 0.2)'
-              : 'rgba(255, 193, 7, 0.3)',
-          color: status?.connected 
-            ? '#00A693' 
-            : isStatusLoading 
-              ? 'rgba(255, 255, 255, 0.5)'
-              : 'rgba(255, 193, 7, 0.9)',
-          cursor: (isLoading || isStatusLoading) ? 'wait' : 'pointer',
-          ...(isHovered && status?.connected ? styles.calendarButtonHover : {}),
-          ...(isHovered && !status?.connected && !isStatusLoading ? styles.calendarButtonDisconnectedHover : {})
-        }}
-        onClick={() => {
-          if (isStatusLoading) return;
-          if (status?.connected) {
-            handleViewCalendar(professional);
-          } else {
-            handleConnectCalendar(professional);
-          }
-        }}
-        disabled={isLoading || isStatusLoading}
-        title={
-          isStatusLoading 
-            ? 'Verificando status do calendário...'
-            : status?.connected 
-              ? `Ver agenda de ${professional.name}` 
-              : `Conectar Google Calendar de ${professional.name}`
-        }
-      >
-        {(isLoading || isStatusLoading) ? (
-          <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-        ) : (
-          <Calendar size={16} />
-        )}
-      </button>
-    );
-  };
-
   const openNewModal = () => {
     setEditingProfessional(null);
     setFormData({
@@ -860,7 +885,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
       if (response && response.ok) {
         closeModal();
         await Promise.all([
-          loadProfessionals(),
+          loadProfessionalsOptimized(),
           loadPlanLimits()
         ]);
         showNotification(editingProfessional ? 'Profissional atualizado com sucesso! 👨‍⚕️' : 'Profissional adicionado com sucesso! 👨‍⚕️', 'success');
@@ -892,7 +917,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
 
       if (response && response.ok) {
         await Promise.all([
-          loadProfessionals(),
+          loadProfessionalsOptimized(),
           loadPlanLimits()
         ]);
       } else if (response) {
@@ -967,77 +992,23 @@ const ProfessionalDashboard = ({ showNotification }) => {
     });
   };
 
-  // ✅ FUNÇÕES DE SALVAMENTO INDIVIDUAL
-  const saveProfessionalBusinessHours = async () => {
-    try {
-      if (!selectedProfessional) return;
-      const response = await makeAuthenticatedRequest(
-        `http://localhost:3001/api/calendar/business-hours/professional/${selectedProfessional.id}`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ businessHours: professionalBusinessHours })
-        }
-      );
-      if (response && response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          showNotification('Horário comercial individual salvo com sucesso! ⏰', 'success');
-          setShowIndividualBusinessHoursModal(false);
-        } else {
-          showNotification('Erro ao salvar horário comercial individual', 'error');
-        }
-      }
-    } catch (error) {
-      showNotification('Erro ao salvar horário comercial individual', 'error');
-    }
+  // ✅ FUNÇÃO PARA MOSTRAR POPUP DE EVENTO
+  const showEventPopup = (event, mouseEvent) => {
+    const rect = mouseEvent.target.getBoundingClientRect();
+    setEventPopup({
+      event,
+      x: rect.left + window.scrollX,
+      y: rect.bottom + window.scrollY + 5
+    });
   };
 
-  const saveIndividualBlockedTime = async () => {
-    try {
-      if (!selectedProfessional) return;
-      if (!individualBlockFormData.title || !individualBlockFormData.start_date || !individualBlockFormData.start_time) {
-        showNotification('Preencha todos os campos obrigatórios', 'warning');
-        return;
-      }
-      const response = await makeAuthenticatedRequest(
-        `http://localhost:3001/api/calendar/blocked-times/professional/${selectedProfessional.id}`,
-        {
-          method: 'POST',
-          body: JSON.stringify(individualBlockFormData)
-        }
-      );
-      if (response && response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          showNotification('Bloqueio individual criado com sucesso! 🔒', 'success');
-          setShowIndividualBlockModal(false);
-          setIndividualBlockFormData({
-            title: '',
-            start_date: '',
-            end_date: '',
-            start_time: '',
-            end_time: '',
-            is_recurring: false,
-            recurrence_type: 'weekly',
-            reason: ''
-          });
-          handleViewCalendar(selectedProfessional); // Recarrega os dados do calendário
-        } else {
-          showNotification('Erro ao criar bloqueio individual', 'error');
-        }
-      }
-    } catch (error) {
-      showNotification('Erro ao salvar bloqueio individual', 'error');
-    }
-  };
-
-  // ✅ RENDERIZAÇÃO DO CALENDÁRIO INDIVIDUAL
+  // ✅ RENDERIZAÇÃO DO CALENDÁRIO INDIVIDUAL COM EVENTOS APENAS COMO NOME
   const renderIndividualCalendar = () => {
     const days = getDaysInIndividualMonth();
     const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     
     return (
-      <div style={styles.card}>
+      <div style={{ marginBottom: '20px' }}>
         <div style={{ 
           display: 'flex', 
           justifyContent: 'space-between', 
@@ -1084,14 +1055,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
         </div>
         
         {/* Grade do calendário */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(7, 1fr)', 
-          gap: '1px',
-          background: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: '8px',
-          overflow: 'hidden'
-        }}>
+        <div style={styles.calendarGrid}>
           {days.map((dayObj, index) => {
             const appointments = getAppointmentsForIndividualDate(dayObj.date);
             const isBlocked = isIndividualDateBlocked(dayObj.date);
@@ -1101,61 +1065,52 @@ const ProfessionalDashboard = ({ showNotification }) => {
               <div
                 key={index}
                 style={{
-                  minHeight: '80px',
-                  padding: '8px',
+                  ...styles.calendarDay,
                   background: dayObj.isCurrentMonth 
                     ? (isToday ? 'rgba(109, 74, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)')
                     : 'rgba(255, 255, 255, 0.02)',
-                  cursor: 'pointer',
-                  position: 'relative',
                   border: isBlocked ? '2px solid rgba(255, 99, 99, 0.5)' : 'none'
                 }}
-                // onClick={() => setSelectedDate(dayObj.date)} // TODO: Implementar seleção de dia para ver detalhes
               >
                 <div style={{
+                  ...styles.calendarDayNumber,
                   color: dayObj.isCurrentMonth 
                     ? (isToday ? '#6D4AFF' : 'white') 
                     : 'rgba(255, 255, 255, 0.3)',
-                  fontSize: '14px',
-                  fontWeight: isToday ? '700' : '500',
-                  marginBottom: '4px'
+                  fontWeight: isToday ? '700' : '500'
                 }}>
                   {dayObj.date.getDate()}
                 </div>
                 
-                {/* Indicadores de agendamentos */}
-                {appointments.length > 0 && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '4px',
-                    left: '4px',
-                    right: '4px',
-                    display: 'flex',
-                    gap: '2px',
-                    flexWrap: 'wrap'
-                  }}>
-                    {appointments.slice(0, 3).map((apt, i) => (
+                {/* Eventos como pequenos blocos com apenas o nome */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                  {appointments.slice(0, 2).map((apt, i) => {
+                    // Extrair apenas o primeiro nome do summary
+                    const eventName = (apt.summary || apt.title || 'Evento')
+                      .split(' ')[0] // Pegar apenas a primeira palavra
+                      .substring(0, 8); // Limitar a 8 caracteres
+                    
+                    return (
                       <div
                         key={i}
-                        style={{
-                          width: '6px',
-                          height: '6px',
-                          borderRadius: '50%',
-                          background: '#00A693'
-                        }}
-                      />
-                    ))}
-                    {appointments.length > 3 && (
-                      <div style={{
-                        fontSize: '10px',
-                        color: '#00A693',
-                        fontWeight: '600'
-                      }}>
-                        +{appointments.length - 3}
+                        style={styles.eventInDay}
+                        onClick={(e) => showEventPopup(apt, e)}
+                        title={apt.summary || apt.title || 'Evento sem título'}
+                      >
+                        {eventName}
                       </div>
-                    )}
-                  </div>
-                )}
+                    );
+                  })}
+                  {appointments.length > 2 && (
+                    <div style={{
+                      ...styles.eventInDay,
+                      background: 'rgba(255, 255, 255, 0.3)',
+                      textAlign: 'center'
+                    }}>
+                      +{appointments.length - 2}
+                    </div>
+                  )}
+                </div>
                 
                 {/* Indicador de bloqueio */}
                 {isBlocked && (
@@ -1164,7 +1119,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
                     top: '4px',
                     right: '4px'
                   }}>
-                    <Lock size={12} color="#FF6B6B" />
+                    <Lock size={10} color="#FF6B6B" />
                   </div>
                 )}
               </div>
@@ -1194,6 +1149,18 @@ const ProfessionalDashboard = ({ showNotification }) => {
     };
     loadDataOptimized();
   }, []);
+
+  // ✅ FECHAR POPUP AO CLICAR FORA
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setEventPopup(null);
+    };
+    
+    if (eventPopup) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [eventPopup]);
 
   if (loading) {
     return (
@@ -1257,7 +1224,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
         </div>
       </div>
 
-      {/* LISTA DE PROFISSIONAIS ATUALIZADA */}
+      {/* LISTA DE PROFISSIONAIS ATUALIZADA - CARDS MENORES E LADO A LADO */}
       {professionals.length === 0 ? (
         <div style={styles.emptyState}>
           <Users size={48} style={styles.emptyIcon} />
@@ -1293,7 +1260,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
                       {professional.specialty}
                     </p>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={styles.actionButtonsContainer}>
                     {/* Botão Google Calendar */}
                     <button 
                       style={{
@@ -1324,9 +1291,9 @@ const ProfessionalDashboard = ({ showNotification }) => {
                         : `Conectar Google Calendar de ${professional.name}`}
                     >
                       {calendarLoading[professional.id] ? (
-                        <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                        <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
                       ) : (
-                        <Calendar size={16} />
+                        <Calendar size={14} />
                       )}
                     </button>
                     
@@ -1340,7 +1307,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
                       onClick={() => openEditModal(professional)}
                       title="Editar profissional"
                     >
-                      <Edit3 size={16} />
+                      <Edit3 size={14} />
                     </button>
                     
                     {/* Botão Deletar */}
@@ -1355,7 +1322,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
                       onClick={() => handleDelete(professional)}
                       title="Remover profissional"
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -1400,7 +1367,69 @@ const ProfessionalDashboard = ({ showNotification }) => {
         </div>
       )}
 
-      {/* MODAIS */}
+      {/* POPUP DE DETALHES DO EVENTO */}
+      {eventPopup && (
+        <div 
+          style={{
+            ...styles.eventPopup,
+            left: eventPopup.x,
+            top: eventPopup.y
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={styles.eventPopupTitle}>
+            {eventPopup.event.summary || eventPopup.event.title || 'Evento sem título'}
+          </div>
+          <div style={styles.eventPopupDetail}>
+            📅 {eventPopup.event.start?.dateTime 
+              ? new Date(eventPopup.event.start.dateTime).toLocaleString('pt-BR') 
+              : eventPopup.event.start 
+              ? new Date(eventPopup.event.start).toLocaleString('pt-BR')
+              : 'Horário não definido'}
+          </div>
+          {eventPopup.event.description && (
+            <div style={styles.eventPopupDetail}>
+              📝 {eventPopup.event.description.substring(0, 100)}...
+            </div>
+          )}
+          <div style={styles.eventPopupDetail}>
+            📞 Agendado via Telegram
+          </div>
+        </div>
+      )}
+
+      {/* Modal do Google Calendar - ATUALIZADO */}
+      {showCalendarModal && selectedProfessional && (
+        <div style={styles.modal}>
+          <div style={styles.calendarModalContent}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>
+                📅 Agenda de {selectedProfessional.name}
+              </h2>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  style={styles.closeButton}
+                  onClick={() => {
+                    setShowCalendarModal(false);
+                    setSelectedProfessional(null);
+                    setCalendarEvents([]);
+                    setProfessionalBusinessHours({});
+                    setProfessionalBlockedTimes([]);
+                    setEventPopup(null); // Fechar popup também
+                  }}
+                >
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+
+            {/* NOVO: Renderização do Calendário Individual */}
+            {renderIndividualCalendar()}
+          </div>
+        </div>
+      )}
+
+      {/* MODAIS DE FORMULÁRIO (mantidos iguais) */}
       {showModal && (
         <div style={styles.modal}>
           <div style={styles.modalContent}>
@@ -1536,348 +1565,6 @@ const ProfessionalDashboard = ({ showNotification }) => {
               </button>
               <button style={styles.saveButton} onClick={handleSave}>
                 {editingProfessional ? 'Atualizar' : 'Salvar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal do Google Calendar - ATUALIZADO */}
-      {showCalendarModal && selectedProfessional && (
-        <div style={styles.modal}>
-          <div style={styles.calendarModalContent}>
-            <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>
-                📅 Agenda de {selectedProfessional.name}
-              </h2>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  style={styles.secondaryButton}
-                  onClick={() => setShowIndividualBusinessHoursModal(true)}
-                >
-                  <Settings size={16} />
-                  Horário Comercial
-                </button>
-                <button
-                  style={styles.button}
-                  onClick={() => setShowIndividualBlockModal(true)}
-                >
-                  <Plus size={16} />
-                  Bloquear Horário
-                </button>
-                <button 
-                  style={styles.closeButton}
-                  onClick={() => {
-                    setShowCalendarModal(false);
-                    setSelectedProfessional(null);
-                    setCalendarEvents([]);
-                    setProfessionalBusinessHours({});
-                    setProfessionalBlockedTimes([]);
-                  }}
-                >
-                  <X size={24} />
-                </button>
-              </div>
-            </div>
-
-            {/* NOVO: Renderização do Calendário Individual */}
-            {renderIndividualCalendar()}
-
-            {/* Eventos do Google Calendar - Abaixo do calendário */}
-            <div style={{ padding: '20px 0' }}>
-              <h3 style={{ color: 'white', fontSize: '20px', fontWeight: '600', marginBottom: '16px' }}>
-                Próximos Eventos do Google Calendar
-              </h3>
-              {calendarLoading[selectedProfessional.id] ? (
-                <div style={{ textAlign: 'center', padding: '40px' }}>
-                  <RefreshCw size={32} style={{ animation: 'spin 1s linear infinite', color: '#6D4AFF', marginBottom: '16px' }} />
-                  <p style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                    Carregando eventos do Google Calendar...
-                  </p>
-                </div>
-              ) : calendarEvents.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px' }}>
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>📅</div>
-                  <h4 style={{ margin: '0 0 8px', color: 'rgba(255, 255, 255, 0.9)' }}>
-                    Nenhum evento encontrado
-                  </h4>
-                  <p style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-                    A agenda está vazia ou não foi possível carregar os eventos.
-                  </p>
-                  <p style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '12px', marginTop: '16px' }}>
-                    💡 Verifique o console para logs de debug
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <p style={{ color: 'rgba(255, 255, 255, 0.7)', marginBottom: '20px' }}>
-                    {calendarEvents.length} evento(s) encontrado(s)
-                  </p>
-                  {calendarEvents.map((event, index) => (
-                    <div key={index} style={styles.eventItem}>
-                      <div style={styles.eventTitle}>
-                        {event.summary || event.title || 'Evento sem título'}
-                      </div>
-                      <div style={styles.eventTime}>
-                        {event.start?.dateTime 
-                          ? new Date(event.start.dateTime).toLocaleString('pt-BR') 
-                          : event.start 
-                          ? new Date(event.start).toLocaleString('pt-BR')
-                          : 'Horário não definido'}
-                      </div>
-                      {event.description && (
-                        <div style={styles.eventDescription}>
-                          {event.description}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* NOVO: Modal de Horário Comercial Individual */}
-      {showIndividualBusinessHoursModal && selectedProfessional && (
-        <div style={styles.modal}>
-          <div style={styles.modalContent}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              marginBottom: '24px' 
-            }}>
-              <h2 style={{ color: '#2c2c2c', fontSize: '24px', fontWeight: '600', margin: 0 }}>
-                ⏰ Horário Comercial de {selectedProfessional.name}
-              </h2>
-              <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-                onClick={() => setShowIndividualBusinessHoursModal(false)}
-              >
-                <X size={24} color="#666" />
-              </button>
-            </div>
-            
-            <div style={{ marginBottom: '24px' }}>
-              {Object.entries(professionalBusinessHours).map(([day, hours]) => (
-                <div key={day} style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '12px', 
-                  marginBottom: '16px',
-                  padding: '16px',
-                  background: 'rgba(255, 255, 255, 0.5)',
-                  borderRadius: '8px'
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={hours.enabled}
-                    onChange={(e) => setProfessionalBusinessHours(prev => ({
-                      ...prev,
-                      [day]: { ...prev[day], enabled: e.target.checked }
-                    }))}
-                    style={{ width: '16px', height: '16px' }}
-                  />
-                  <div style={{ width: '80px', fontSize: '14px', fontWeight: '600', color: '#2c2c2c' }}>
-                    {day.charAt(0).toUpperCase() + day.slice(1)}
-                  </div>
-                  {hours.enabled && (
-                    <>
-                      <input
-                        type="time"
-                        value={hours.start}
-                        onChange={(e) => setProfessionalBusinessHours(prev => ({
-                          ...prev,
-                          [day]: { ...prev[day], start: e.target.value }
-                        }))}
-                        style={{ ...styles.input, width: '120px', marginBottom: 0 }}
-                      />
-                      <span style={{ color: '#666' }}>às</span>
-                      <input
-                        type="time"
-                        value={hours.end}
-                        onChange={(e) => setProfessionalBusinessHours(prev => ({
-                          ...prev,
-                          [day]: { ...prev[day], end: e.target.value }
-                        }))}
-                        style={{ ...styles.input, width: '120px', marginBottom: 0 }}
-                      />
-                      <span style={{ color: '#666' }}>Almoço:</span>
-                      <input
-                        type="time"
-                        value={hours.lunch_start}
-                        onChange={(e) => setProfessionalBusinessHours(prev => ({
-                          ...prev,
-                          [day]: { ...prev[day], lunch_start: e.target.value }
-                        }))}
-                        style={{ ...styles.input, width: '120px', marginBottom: 0 }}
-                      />
-                      <span style={{ color: '#666' }}>às</span>
-                      <input
-                        type="time"
-                        value={hours.lunch_end}
-                        onChange={(e) => setProfessionalBusinessHours(prev => ({
-                          ...prev,
-                          [day]: { ...prev[day], lunch_end: e.target.value }
-                        }))}
-                        style={{ ...styles.input, width: '120px', marginBottom: 0 }}
-                      />
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                style={styles.secondaryButton}
-                onClick={() => setShowIndividualBusinessHoursModal(false)}
-              >
-                Cancelar
-              </button>
-              <button
-                style={styles.button}
-                onClick={saveProfessionalBusinessHours}
-              >
-                <Save size={16} />
-                Salvar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* NOVO: Modal de Bloqueio de Horário Individual */}
-      {showIndividualBlockModal && selectedProfessional && (
-        <div style={styles.modal}>
-          <div style={styles.modalContent}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              marginBottom: '24px' 
-            }}>
-              <h2 style={{ color: '#2c2c2c', fontSize: '24px', fontWeight: '600', margin: 0 }}>
-                🔒 Bloquear Horário para {selectedProfessional.name}
-              </h2>
-              <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-                onClick={() => setShowIndividualBlockModal(false)}
-              >
-                <X size={24} color="#666" />
-              </button>
-            </div>
-            
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', color: '#2c2c2c', fontWeight: '600' }}>
-                Título do Bloqueio *
-              </label>
-              <input
-                type="text"
-                value={individualBlockFormData.title}
-                onChange={(e) => setIndividualBlockFormData(prev => ({ ...prev, title: e.target.value }))}
-                placeholder="Ex: Férias, Consulta Pessoal..."
-                style={styles.input}
-              />
-              
-              <label style={{ display: 'block', marginBottom: '8px', color: '#2c2c2c', fontWeight: '600' }}>
-                Data de Início *
-              </label>
-              <input
-                type="date"
-                value={individualBlockFormData.start_date}
-                onChange={(e) => setIndividualBlockFormData(prev => ({ ...prev, start_date: e.target.value }))}
-                style={styles.input}
-              />
-              
-              <label style={{ display: 'block', marginBottom: '8px', color: '#2c2c2c', fontWeight: '600' }}>
-                Data de Fim (opcional)
-              </label>
-              <input
-                type="date"
-                value={individualBlockFormData.end_date}
-                onChange={(e) => setIndividualBlockFormData(prev => ({ ...prev, end_date: e.target.value }))}
-                style={styles.input}
-              />
-              
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: '#2c2c2c', fontWeight: '600' }}>
-                    Hora de Início *
-                  </label>
-                  <input
-                    type="time"
-                    value={individualBlockFormData.start_time}
-                    onChange={(e) => setIndividualBlockFormData(prev => ({ ...prev, start_time: e.target.value }))}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: '#2c2c2c', fontWeight: '600' }}>
-                    Hora de Fim
-                  </label>
-                  <input
-                    type="time"
-                    value={individualBlockFormData.end_time}
-                    onChange={(e) => setIndividualBlockFormData(prev => ({ ...prev, end_time: e.target.value }))}
-                    style={styles.input}
-                  />
-                </div>
-              </div>
-              
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2c2c2c' }}>
-                  <input
-                    type="checkbox"
-                    checked={individualBlockFormData.is_recurring}
-                    onChange={(e) => setIndividualBlockFormData(prev => ({ ...prev, is_recurring: e.target.checked }))}
-                  />
-                  Bloqueio recorrente
-                </label>
-              </div>
-              
-              {individualBlockFormData.is_recurring && (
-                <>
-                  <label style={{ display: 'block', marginBottom: '8px', color: '#2c2c2c', fontWeight: '600' }}>
-                    Tipo de Recorrência
-                  </label>
-                  <select
-                    value={individualBlockFormData.recurrence_type}
-                    onChange={(e) => setIndividualBlockFormData(prev => ({ ...prev, recurrence_type: e.target.value }))}
-                    style={styles.select}
-                  >
-                    <option value="weekly">Semanal</option>
-                    <option value="daily">Diário</option>
-                  </select>
-                </>
-              )}
-              
-              <label style={{ display: 'block', marginBottom: '8px', color: '#2c2c2c', fontWeight: '600' }}>
-                Motivo (opcional)
-              </label>
-              <textarea
-                value={individualBlockFormData.reason}
-                onChange={(e) => setIndividualBlockFormData(prev => ({ ...prev, reason: e.target.value }))}
-                placeholder="Descreva o motivo do bloqueio..."
-                style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
-              />
-            </div>
-            
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                style={styles.secondaryButton}
-                onClick={() => setShowIndividualBlockModal(false)}
-              >
-                Cancelar
-              </button>
-              <button
-                style={styles.button}
-                onClick={saveIndividualBlockedTime}
-              >
-                <Save size={16} />
-                Criar Bloqueio
               </button>
             </div>
           </div>
