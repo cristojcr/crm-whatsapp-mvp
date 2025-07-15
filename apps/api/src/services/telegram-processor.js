@@ -443,7 +443,7 @@ class TelegramProcessor {
             }
 
             // 🎉 MENSAGEM DE SUCESSO
-            const successMessage = `✅ *Agendamento confirmado!*\n\n👨‍⚕️ *Profissional:* ${selectedProfessional.name}\n${selectedProfessional.specialty ? `🎯 *Especialidade:* ${selectedProfessional.specialty}` : ""}\n📅 *Data:* ${appointmentDate.toLocaleDateString("pt-BR")}\n🕐 *Horário:* ${appointmentDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}\n\n📱 *Você receberá lembretes automáticos.*\n📝 *O evento foi adicionado ao calendário do profissional.*\n\nEm caso de dúvidas, entre em contato! 😊`;
+            const successMessage = `✅ *Agendamento confirmado!*\n\n👨‍⚕️ *Profissional:* ${selectedProfessional.name}\n${selectedProfessional.specialty ? `🎯 *Especialidade:* ${selectedProfessional.specialty}` : ""}\n📅 *Data:* ${appointmentDate.toLocaleDateString("pt-BR")}\n🕐 *Horário:* ${appointmentDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}\n\n📱 *Você receberá lembretes automáticos.*\n📝 *O evento foi adicionado ao calendário do profissional.*\n\nEm caso de dúvidas, entre em contato! 😊`;
 
             return successMessage;
 
@@ -858,7 +858,8 @@ class TelegramProcessor {
             });
             const newTimeStr = newDateTime.date.toLocaleTimeString("pt-BR", { 
                 hour: "2-digit", 
-                minute: "2-digit" 
+                minute: "2-digit",
+                timeZone: "America/Sao_Paulo"
             });
 
             return `✅ *Consulta remarcada com sucesso!*\n\n👨‍⚕️ *Profissional:* ${professional?.name}\n📅 *Nova data:* ${newDateStr}  \n🕐 *Novo horário:* ${newTimeStr}\n\n📝 *O evento foi atualizado no Google Calendar.*\n\n💬 *Alguma outra dúvida? Estou aqui para ajudar!*`;
@@ -936,7 +937,8 @@ class TelegramProcessor {
             });
             const timeStr = date.toLocaleTimeString("pt-BR", { 
                 hour: "2-digit", 
-                minute: "2-digit" 
+                minute: "2-digit",
+                timeZone: "America/Sao_Paulo"
             });
 
             return `✅ *Consulta cancelada com sucesso!*\n\n📅 *Consulta cancelada:* ${dateStr} às ${timeStr}\n👨‍⚕️ *Profissional:* ${professional?.name}\n\n📝 *O evento foi removido do Google Calendar.*\n\n💬 *Precisa agendar uma nova consulta? É só me falar!*`;
