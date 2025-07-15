@@ -219,7 +219,7 @@ router.get("/oauth2callback", async (req, res) => {
 
             // Adicionar refresh token se existir
             if (tokens.refresh_token) {
-                updateData.google_refresh_token = tokens.refresh_refresh_token;
+                updateData.google_refresh_token = tokens.refresh_token;
                 console.log("✅ Refresh token incluído");
             }
 
@@ -490,7 +490,7 @@ router.get("/events/:professionalId", authenticateUser, async (req, res) => {
 });
 
 // POST /api/calendar/create/:professionalId - Criar evento no calendário
-router.post("/create/:professionalId", authenticateToken, async (req, res) => {
+router.post("/create/:professionalId", async (req, res) => {
     const { professionalId } = req.params; // ✅ DEFINIR NO INÍCIO
     
     try {
