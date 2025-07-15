@@ -354,15 +354,7 @@ const ChannelSettings = ({ initialChannels, onUpdate, userId, userPlan = 'premiu
                 <span>Salvo com Sucesso!</span>
             </div>
             
-            {/* Header igual ao Dashboard */}
-            <div style={styles.pageHeader}>
-                <h1 style={styles.pageTitle}>🚀 Dashboard Multicanal</h1>
-                <div style={styles.headerInfo}>
-                    <span style={styles.channelCount}>
-                        {channels.length} {channels.length === 1 ? 'canal' : 'canais'} configurado{channels.length === 1 ? '' : 's'}
-                    </span>
-                </div>
-            </div>
+            {/* Header removido - renderizado dentro do mainContent */}
             
             {/* Layout dos boxes */}
             <div style={styles.contentLayout}>
@@ -370,6 +362,9 @@ const ChannelSettings = ({ initialChannels, onUpdate, userId, userPlan = 'premiu
             <div style={styles.sidebar}>
                 <div style={styles.sidebarHeader}>
                     <h3 style={styles.sidebarTitle}>🌐 Meus Canais</h3>
+                    <span style={styles.channelCount}>
+                        {channels.length} {channels.length === 1 ? 'canal' : 'canais'} configurado{channels.length === 1 ? '' : 's'}
+                    </span>
                 </div>
                 <div style={styles.channelsList}>
                     {loading && <p style={styles.loadingText}>Carregando...</p>}
@@ -390,7 +385,7 @@ const ChannelSettings = ({ initialChannels, onUpdate, userId, userPlan = 'premiu
                                 <span style={styles.channelName}>{getChannelName(channel.channel_type)}</span>
                             </div>
                             <button 
-                                style={{...styles.toggleSwitch, background: channel.is_active ? '#28a745' : '#ccc'}}
+                                style={{...styles.toggleSwitch, background: channel.is_active ? '#00A693' : '#ccc'}}
                                 onClick={(e) => { e.stopPropagation(); handleToggleChannel(channel.id, channel.is_active); }}
                             >
                                 <div style={{...styles.toggleKnob, transform: channel.is_active ? 'translateX(20px)' : 'translateX(0)'}}></div>
@@ -454,62 +449,37 @@ const ChannelSettings = ({ initialChannels, onUpdate, userId, userPlan = 'premiu
     );
 };
 
-// ✨ ESTILOS PREMIUM COM GRADIENTE ROXO E GLASSMORPHISM
+// ✨ ESTILOS ATUALIZADOS PARA ALINHAR COM O DESIGN DA PLATAFORMA
 const styles = {
+    // ✅ NOVO: Container sem background próprio
     container: { 
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', 
-        padding: '24px',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        minHeight: '100vh'
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', 
+        padding: '0',
+        background: 'transparent', // ✨ Sem background próprio
+        minHeight: 'auto' // ✨ Sem altura própria
     },
     
-    // Header igual ao Dashboard
-    pageHeader: {
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: '24px'
-    },
-    
-    pageTitle: { 
-        fontSize: '28px', 
-        fontWeight: 'bold', 
-        color: 'white', 
-        textShadow: '0 2px 4px rgba(0,0,0,0.1)',
-        margin: 0
-    },
-    
-    headerInfo: {
-        background: 'rgba(255, 255, 255, 0.9)',
-        borderRadius: '12px',
-        padding: '10px 16px',
-        backdropFilter: 'blur(10px)',
-        border: '1px solid rgba(255, 255, 255, 0.3)'
-    },
-    
-    channelCount: {
-        fontSize: '14px',
-        fontWeight: '600',
-        color: '#667eea'
-    },
-    
-    // Layout dos boxes alinhados
+    // ✅ Layout principal atualizado
     contentLayout: {
         display: 'flex', 
-        gap: '30px',
-        maxHeight: 'calc(100vh - 180px)' // Altura controlada para alinhar com Dashboard
+        gap: '24px',
+        height: '100%'
     },
     
-    // Sidebar Premium
+    // ✅ Sidebar com glassmorphism moderno
     sidebar: { 
         flex: '0 0 320px', 
-        background: 'rgba(255, 255, 255, 0.95)', 
-        borderRadius: '20px', 
-        boxShadow: '0 8px 32px rgba(0,0,0,0.1)', 
+        background: 'rgba(255, 255, 255, 0.75)', // ✨ Glassmorphism como ProductDashboard
+        backdropFilter: 'blur(20px)', // ✨ Mais blur
+        WebkitBackdropFilter: 'blur(20px)',
+        borderRadius: '16px', // ✨ Bordas mais arredondadas
+        boxShadow: `
+            inset 0 1px 0 rgba(255, 255, 255, 0.4),
+            inset 0 -1px 0 rgba(255, 255, 255, 0.2),
+            0 4px 20px rgba(255, 255, 255, 0.1)
+        `, // ✨ Sombra igual aos cards
+        border: '1px solid rgba(255, 255, 255, 0.4)', // ✨ Borda sutil
         overflow: 'hidden',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255, 255, 255, 0.3)',
-        animation: 'fadeIn 0.5s ease-out',
         height: 'fit-content',
         maxHeight: '100%'
     },
@@ -517,32 +487,43 @@ const styles = {
     sidebarHeader: { 
         padding: '24px', 
         borderBottom: '1px solid rgba(0,0,0,0.05)',
-        background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)'
+        background: 'linear-gradient(135deg, rgba(109, 74, 255, 0.1) 0%, rgba(0, 166, 147, 0.1) 100%)' // ✨ Cores Proton
     },
     
     sidebarTitle: { 
-        margin: 0, 
-        fontSize: '20px', 
-        fontWeight: '700',
-        color: '#1f2937',
-        textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+        margin: '0 0 8px 0', 
+        fontSize: '18px', 
+        fontWeight: '600',
+        color: '#2c2c2c' // ✨ Roxo escuro
+    },
+    
+    // ✅ NOVO: Contador de canais
+    channelCount: {
+        fontSize: '12px',
+        fontWeight: '500',
+        color: '#6D4AFF', // ✨ Cor Proton roxa
+        background: 'rgba(109, 74, 255, 0.1)',
+        padding: '4px 8px',
+        borderRadius: '8px',
+        border: '1px solid rgba(109, 74, 255, 0.2)'
     },
     
     channelsList: { 
         padding: '16px' 
     },
     
-    // Channel Items
+    // Channel Items atualizados
     channelItem: { 
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center', 
         padding: '16px 20px', 
-        borderRadius: '14px', 
+        borderRadius: '12px', 
         cursor: 'pointer', 
-        marginBottom: '12px', 
+        marginBottom: '8px', 
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        border: '1px solid transparent'
+        border: '1px solid transparent',
+        background: 'rgba(255, 255, 255, 0.3)', // ✨ Fundo sutil
     },
     
     channelItemActive: { 
@@ -550,43 +531,43 @@ const styles = {
         justifyContent: 'space-between', 
         alignItems: 'center', 
         padding: '16px 20px', 
-        borderRadius: '14px', 
+        borderRadius: '12px', 
         cursor: 'pointer', 
-        marginBottom: '12px', 
-        background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%)',
-        border: '1px solid rgba(102, 126, 234, 0.3)',
-        boxShadow: '0 4px 12px rgba(102, 126, 234, 0.2)',
-        transform: 'translateY(-2px)'
+        marginBottom: '8px', 
+        background: 'linear-gradient(135deg, rgba(109, 74, 255, 0.15) 0%, rgba(0, 166, 147, 0.15) 100%)', // ✨ Cores Proton
+        border: '1px solid rgba(109, 74, 255, 0.3)',
+        boxShadow: '0 4px 12px rgba(109, 74, 255, 0.2)',
+        transform: 'translateY(-1px)'
     },
     
     channelInfo: { 
         display: 'flex', 
         alignItems: 'center', 
-        gap: '16px' 
+        gap: '12px' 
     },
     
     channelIconContainer: { 
-        width: '48px', 
-        height: '48px', 
-        borderRadius: '12px', 
+        width: '40px', 
+        height: '40px', 
+        borderRadius: '10px', 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center', 
         color: 'white',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+        boxShadow: '0 3px 8px rgba(0,0,0,0.15)'
     },
     
     channelName: { 
         fontWeight: '600',
-        fontSize: '16px',
-        color: '#1f2937'
+        fontSize: '14px',
+        color: '#2c2c2c' // ✨ Roxo escuro
     },
     
-    // Toggle Switch Premium
+    // Toggle Switch com cor Proton
     toggleSwitch: { 
-        width: '50px', 
-        height: '28px', 
-        borderRadius: '14px', 
+        width: '44px', 
+        height: '24px', 
+        borderRadius: '12px', 
         position: 'relative', 
         cursor: 'pointer', 
         transition: 'all 0.3s ease', 
@@ -595,26 +576,30 @@ const styles = {
     },
     
     toggleKnob: { 
-        width: '24px', 
-        height: '24px', 
+        width: '20px', 
+        height: '20px', 
         background: 'white', 
         borderRadius: '50%', 
         position: 'absolute', 
         top: '2px', 
         left: '2px', 
         transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
     },
     
-    // Main Content Premium
+    // ✅ Main Content com glassmorphism
     mainContent: { 
         flex: 1, 
-        background: 'rgba(255, 255, 255, 0.95)', 
-        borderRadius: '20px', 
-        boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255, 255, 255, 0.3)',
-        animation: 'fadeIn 0.5s ease-out 0.1s both',
+        background: 'rgba(255, 255, 255, 0.75)', // ✨ Glassmorphism como ProductDashboard
+        backdropFilter: 'blur(20px)', // ✨ Mais blur
+        WebkitBackdropFilter: 'blur(20px)',
+        borderRadius: '16px',
+        boxShadow: `
+            inset 0 1px 0 rgba(255, 255, 255, 0.4),
+            inset 0 -1px 0 rgba(255, 255, 255, 0.2),
+            0 4px 20px rgba(255, 255, 255, 0.1)
+        `, // ✨ Sombra igual aos cards
+        border: '1px solid rgba(255, 255, 255, 0.4)',
         height: 'fit-content',
         maxHeight: '100%',
         display: 'flex',
@@ -622,107 +607,106 @@ const styles = {
     },
     
     configHeader: { 
-        padding: '28px 32px', 
+        padding: '24px 28px', 
         borderBottom: '1px solid rgba(0,0,0,0.05)', 
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center',
-        background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)'
+        background: 'linear-gradient(135deg, rgba(109, 74, 255, 0.1) 0%, rgba(0, 166, 147, 0.1) 100%)' // ✨ Cores Proton
     },
     
     configTitle: { 
         margin: 0, 
-        fontSize: '24px', 
-        fontWeight: '700',
-        color: '#1f2937',
-        textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+        fontSize: '20px', 
+        fontWeight: '600',
+        color: '#2c2c2c' // ✨ Roxo escuro
     },
     
     planBadge: { 
-        padding: '8px 16px', 
-        borderRadius: '20px', 
-        fontSize: '12px', 
-        fontWeight: '700', 
+        padding: '6px 12px', 
+        borderRadius: '16px', 
+        fontSize: '11px', 
+        fontWeight: '600', 
         color: 'white', 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+        background: 'linear-gradient(135deg, #6D4AFF 0%, #00A693 100%)', // ✨ Cores Proton
+        boxShadow: '0 3px 8px rgba(109, 74, 255, 0.3)',
         textTransform: 'uppercase',
         letterSpacing: '0.5px'
     },
     
     configFields: { 
-        padding: '32px',
+        padding: '28px',
         flex: 1,
         overflow: 'auto'
     },
     
-    // Form Fields Premium
+    // Form Fields atualizados
     fieldContainer: { 
-        marginBottom: '24px' 
+        marginBottom: '20px' 
     },
     
     label: { 
         display: 'block', 
         fontWeight: '600', 
-        marginBottom: '8px', 
-        color: '#374151',
-        fontSize: '14px'
+        marginBottom: '6px', 
+        color: '#2c2c2c', // ✨ Roxo escuro
+        fontSize: '13px'
     },
     
     input: { 
         width: '100%', 
-        padding: '14px 16px', 
-        border: '2px solid #e5e7eb', 
-        borderRadius: '12px', 
-        fontSize: '15px',
+        padding: '12px 14px', 
+        border: '1px solid rgba(109, 74, 255, 0.2)', // ✨ Borda Proton
+        borderRadius: '10px', 
+        fontSize: '14px',
         transition: 'all 0.3s ease',
-        background: 'white',
+        background: 'rgba(255, 255, 255, 0.8)', // ✨ Fundo sutil
         fontFamily: 'inherit',
         outline: 'none',
-        '::placeholder': {
-            color: '#9ca3af'
-        }
+        color: '#2c2c2c', // ✨ Roxo escuro
+        boxSizing: 'border-box'
     },
     
     webhookInput: {
         width: '100%', 
-        padding: '14px 16px', 
-        border: '2px solid #e5e7eb', 
-        borderRadius: '12px', 
-        fontSize: '15px',
-        background: '#f9fafb', 
+        padding: '12px 14px', 
+        border: '1px solid rgba(109, 74, 255, 0.2)', 
+        borderRadius: '10px', 
+        fontSize: '13px',
+        background: 'rgba(109, 74, 255, 0.1)', // ✨ Fundo Proton
         cursor: 'copy',
         fontFamily: 'monospace',
-        color: '#6b7280'
+        color: '#6D4AFF', // ✨ Cor Proton
+        boxSizing: 'border-box'
     },
     
     helpText: { 
-        fontSize: '13px', 
-        color: '#6b7280', 
-        marginTop: '6px',
+        fontSize: '12px', 
+        color: '#666', 
+        marginTop: '4px',
         fontStyle: 'italic'
     },
     
-    // Actions
+    // Actions atualizadas
     configActions: { 
-        padding: '24px 32px', 
+        padding: '20px 28px', 
         borderTop: '1px solid rgba(0,0,0,0.05)', 
         display: 'flex', 
         justifyContent: 'flex-end',
-        background: 'rgba(249, 250, 251, 0.5)'
+        background: 'rgba(249, 250, 251, 0.3)'
     },
     
     saveButton: { 
-        padding: '14px 28px', 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+        padding: '12px 24px', 
+        background: 'linear-gradient(135deg, #6D4AFF 0%, #00A693 100%)', // ✨ Cores Proton
         color: 'white', 
         border: 'none', 
-        borderRadius: '12px', 
+        borderRadius: '10px', 
         cursor: 'pointer', 
         fontWeight: '600',
-        fontSize: '15px',
+        fontSize: '14px',
         transition: 'all 0.3s ease',
-        boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+        boxShadow: '0 4px 12px rgba(109, 74, 255, 0.3)',
         display: 'flex',
         alignItems: 'center',
         gap: '8px'
@@ -735,99 +719,101 @@ const styles = {
     },
     
     buttonSpinner: {
-        width: '16px',
-        height: '16px',
+        width: '14px',
+        height: '14px',
         border: '2px solid rgba(255, 255, 255, 0.3)',
         borderTop: '2px solid white',
         borderRadius: '50%',
         animation: 'spin 1s linear infinite'
     },
     
-    // Empty States
+    // Empty States atualizados
     emptyState: { 
-        padding: '60px 40px', 
+        padding: '40px 30px', 
         textAlign: 'center', 
-        color: '#6b7280'
+        color: '#666'
     },
     
     emptySidebar: { 
-        padding: '40px 20px', 
+        padding: '30px 16px', 
         textAlign: 'center', 
-        color: '#9ca3af'
+        color: '#999'
     },
     
     emptyIcon: { 
-        fontSize: '48px', 
-        marginBottom: '16px',
+        fontSize: '36px', 
+        marginBottom: '12px',
         opacity: 0.6
     },
     
     emptyText: {
-        fontSize: '15px',
-        lineHeight: '1.5',
-        color: '#6b7280'
+        fontSize: '14px',
+        lineHeight: '1.4',
+        color: '#666'
     },
     
     loadingText: {
         textAlign: 'center',
-        color: '#6b7280',
-        fontStyle: 'italic'
+        color: '#999',
+        fontStyle: 'italic',
+        fontSize: '14px'
     },
     
-    // Success Animation Premium
+    // Success Animation atualizada
     successAnimation: { 
         display: 'none', 
         position: 'fixed', 
-        top: '30px', 
-        right: '30px', 
-        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', 
+        top: '24px', 
+        right: '24px', 
+        background: 'linear-gradient(135deg, #00A693 0%, #059669 100%)', // ✨ Verde Proton
         color: 'white', 
-        padding: '16px 24px', 
-        borderRadius: '16px', 
+        padding: '12px 20px', 
+        borderRadius: '12px', 
         zIndex: 1000,
-        boxShadow: '0 8px 24px rgba(16, 185, 129, 0.3)',
+        boxShadow: '0 6px 20px rgba(0, 166, 147, 0.3)',
         animation: 'slideIn 0.5s ease-out',
         display: 'flex',
         alignItems: 'center',
-        gap: '12px',
+        gap: '10px',
         fontWeight: '600',
         backdropFilter: 'blur(20px)'
     },
     
     successIcon: {
-        fontSize: '18px'
+        fontSize: '16px'
     },
 
-    // ✅ CORRIGIDO: Estilos para OAuth automático
+    // ✅ Estilos para OAuth automático atualizados
     autoConnectSection: {
-        background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
-        border: '1px solid rgba(102, 126, 234, 0.2)',
-        borderRadius: '16px',
-        padding: '24px',
-        marginBottom: '24px'
+        background: 'linear-gradient(135deg, rgba(109, 74, 255, 0.1) 0%, rgba(0, 166, 147, 0.1) 100%)', // ✨ Cores Proton
+        border: '1px solid rgba(109, 74, 255, 0.2)',
+        borderRadius: '12px',
+        padding: '20px',
+        marginBottom: '20px'
     },
 
     autoConnectTitle: {
-        margin: '0 0 16px 0',
-        fontSize: '16px',
+        margin: '0 0 12px 0',
+        fontSize: '15px',
         fontWeight: '600',
-        color: '#374151'
+        color: '#2c2c2c' // ✨ Roxo escuro
     },
 
     connectButton: {
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'linear-gradient(135deg, #6D4AFF 0%, #00A693 100%)', // ✨ Cores Proton
         color: 'white',
         border: 'none',
-        borderRadius: '12px',
-        padding: '14px 28px',
-        fontSize: '15px',
+        borderRadius: '10px',
+        padding: '12px 24px',
+        fontSize: '14px',
         fontWeight: '600',
         cursor: 'pointer',
         transition: 'all 0.3s ease',
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        marginBottom: '12px'
+        marginBottom: '10px',
+        boxShadow: '0 4px 12px rgba(109, 74, 255, 0.3)'
     },
 
     connectButtonLoading: {
@@ -836,8 +822,8 @@ const styles = {
     },
 
     spinner: {
-        width: '16px',
-        height: '16px',
+        width: '14px',
+        height: '14px',
         border: '2px solid rgba(255, 255, 255, 0.3)',
         borderTop: '2px solid white',
         borderRadius: '50%',
@@ -845,20 +831,22 @@ const styles = {
     },
 
     manualConfig: {
-        border: '1px solid #e5e7eb',
-        borderRadius: '12px',
-        padding: '16px'
+        border: '1px solid rgba(109, 74, 255, 0.2)', // ✨ Borda Proton
+        borderRadius: '10px',
+        padding: '14px',
+        background: 'rgba(255, 255, 255, 0.5)' // ✨ Fundo sutil
     },
 
     manualSummary: {
         fontWeight: '600',
         cursor: 'pointer',
-        padding: '8px 0',
-        color: '#6b7280'
+        padding: '6px 0',
+        color: '#2c2c2c', // ✨ Roxo escuro
+        fontSize: '14px'
     },
 
     manualFields: {
-        marginTop: '16px'
+        marginTop: '14px'
     }
 };
 

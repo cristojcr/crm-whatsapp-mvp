@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Search, Filter, X, Package, TrendingUp, DollarSign, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-const ProductDashboard = ({ showNotification }) => {
+const ProductDashboard = () => {
   // --- ESTADOS DO COMPONENTE (MANTIDOS IGUAIS) ---
   const [products, setProducts] = useState([]);
   const [professionals, setProfessionals] = useState([]);
@@ -167,7 +167,7 @@ const ProductDashboard = ({ showNotification }) => {
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
-      showNotification('Nome do produto é obrigatório', 'warning');
+      alert('Nome do produto é obrigatório');
       return;
     }
 
@@ -199,12 +199,12 @@ const ProductDashboard = ({ showNotification }) => {
 
         if (error) {
           console.error('❌ Erro ao editar produto:', error);
-          showNotification('Erro ao editar produto: ' + error.message, 'error');
+          alert('Erro ao editar produto: ' + error.message);
           return;
         }
 
         console.log('✅ Produto editado com sucesso!');
-        showNotification('Produto editado com sucesso! 📦', 'success');
+        alert('Produto editado com sucesso!');
       } else {
         const { error } = await supabase
           .from('products')
@@ -212,12 +212,12 @@ const ProductDashboard = ({ showNotification }) => {
 
         if (error) {
           console.error('❌ Erro ao criar produto:', error);
-          showNotification('Erro ao criar produto: ' + error.message, 'error');
+          alert('Erro ao criar produto: ' + error.message);
           return;
         }
 
         console.log('✅ Produto criado com sucesso!');
-        showNotification('Produto criado com sucesso! 🎉', 'success');
+        alert('Produto criado com sucesso!');
       }
 
       await loadProducts();
@@ -225,7 +225,7 @@ const ProductDashboard = ({ showNotification }) => {
 
     } catch (error) {
       console.error('❌ Erro inesperado ao salvar produto:', error);
-      showNotification('Erro inesperado ao salvar produto: ' + error.message, 'error');
+      alert('Erro inesperado ao salvar produto: ' + error.message);
     }
   };
 
@@ -242,16 +242,16 @@ const ProductDashboard = ({ showNotification }) => {
 
       if (error) {
         console.error('Erro ao deletar produto:', error);
-        showNotification('Erro ao deletar produto: ' + error.message, 'error');
+        alert('Erro ao deletar produto: ' + error.message);
         return;
       }
 
-      showNotification('Produto deletado com sucesso! 🗑️', 'success');
+      alert('Produto deletado com sucesso!');
       await loadProducts();
 
     } catch (error) {
       console.error('Erro ao deletar produto:', error);
-      showNotification('Erro inesperado ao deletar produto', 'error');
+      alert('Erro inesperado ao deletar produto');
     }
   };
 
@@ -339,33 +339,23 @@ const ProductDashboard = ({ showNotification }) => {
       marginBottom: '32px'
     },
     statCard: {
-      background: 'rgba(255, 255, 255, 0.75)', // ✨ Fundo hover fixo
-      backdropFilter: 'blur(20px)', // ✨ Mais blur
-      border: '1px solid rgba(255, 255, 255, 0.4)',
+      background: 'rgba(255, 255, 255, 0.08)',
+      backdropFilter: 'blur(12px)',
+      border: '1px solid rgba(255, 255, 255, 0.12)',
       borderRadius: '16px',
       padding: '24px',
-      textAlign: 'center',
-      boxShadow: `
-        inset 0 1px 0 rgba(255, 255, 255, 0.4),
-        inset 0 -1px 0 rgba(255, 255, 255, 0.2),
-        0 4px 20px rgba(255, 255, 255, 0.1)
-      ` // ✨ Sombra igual hover das linhas
+      textAlign: 'center'
     },
     statNumber: {
       fontSize: '32px',
       fontWeight: '700',
+      color: '#00A693',
       margin: '0 0 8px 0'
     },
-    // ✨ Números coloridos para cada card
-    statNumber1: { color: '#6D4AFF' }, // Roxo vibrante
-    statNumber2: { color: '#00A693' }, // Verde neon  
-    statNumber3: { color: '#FF6B6B' }, // Coral vibrante
-    statNumber4: { color: '#4ECDC4' }, // Turquesa
     statLabel: {
       fontSize: '14px',
-      color: '#2c2c2c', // ✨ Roxo escuro quase preto
-      margin: 0,
-      fontWeight: '600'
+      color: 'rgba(255, 255, 255, 0.7)',
+      margin: 0
     },
     filtersContainer: {
       display: 'flex',
@@ -409,8 +399,8 @@ const ProductDashboard = ({ showNotification }) => {
       paddingRight: '32px',
       paddingTop: '12px',
       paddingBottom: '12px',
-      background: 'rgba(109, 74, 255, 0.15)', // ✨ Roxo harmonioso da plataforma
-      border: '1px solid rgba(109, 74, 255, 0.3)',
+      background: 'rgba(255, 255, 255, 0.08)',
+      border: '1px solid rgba(255, 255, 255, 0.12)',
       borderRadius: '12px',
       fontSize: '14px',
       outline: 'none',
@@ -445,11 +435,10 @@ const ProductDashboard = ({ showNotification }) => {
       tableLayout: 'fixed'
     },
     tableHeader: {
-      background: 'linear-gradient(135deg, #6D4AFF 0%, #00A693 100%)', // ✨ MESMO gradiente do botão "+ Novo Produto"
-      position: 'sticky',
+      background: 'rgba(255, 255, 255, 0.05)',
+      position: 'sticky', // ✨ Header da tabela fica fixo durante scroll
       top: 0,
-      zIndex: 10,
-      boxShadow: '0 4px 12px rgba(109, 74, 255, 0.3)' // ✨ Sombra ajustada para o gradiente
+      zIndex: 10
     },
     th: {
       padding: '16px 24px',
@@ -694,8 +683,8 @@ const ProductDashboard = ({ showNotification }) => {
     modalSelect: {
       width: '100%',
       padding: '12px 16px',
-      background: 'rgba(109, 74, 255, 0.15)', // ✨ Roxo harmonioso da plataforma
-      border: '1px solid rgba(109, 74, 255, 0.3)',
+      background: 'rgba(40, 40, 40, 0.95)',
+      border: '1px solid rgba(255, 255, 255, 0.25)',
       borderRadius: '12px',
       color: 'rgba(255, 255, 255, 0.95)',
       fontSize: '14px',
@@ -773,17 +762,17 @@ const ProductDashboard = ({ showNotification }) => {
     }
     
     select option {
-      background: rgba(109, 74, 255, 0.2) !important; /* ✨ Roxo harmonioso */
+      background: #2a2a2a !important;
       color: #ffffff !important;
       padding: 8px 12px !important;
     }
     
     select option:hover {
-      background: rgba(109, 74, 255, 0.4) !important; /* ✨ Roxo mais forte no hover */
+      background: #404040 !important;
     }
     
     select option:checked {
-      background: #6D4AFF !important; /* ✨ Roxo vibrante quando selecionado */
+      background: #6D4AFF !important;
       color: white !important;
     }
     
@@ -808,7 +797,7 @@ const ProductDashboard = ({ showNotification }) => {
     
     .product-name-hover {
       font-weight: 700 !important;
-      color: #2c2c2c !important; /* ✨ Roxo escuro em vez de preto */
+      color: #1a1a1a !important;
       white-space: nowrap !important;
       overflow: hidden !important;
       text-overflow: ellipsis !important;
@@ -817,7 +806,7 @@ const ProductDashboard = ({ showNotification }) => {
     
     .product-description-hover {
       font-weight: 400 !important;
-      color: #4a4a4a !important; /* ✨ Roxo escuro mais claro para descrição */
+      color: #666666 !important;
       white-space: nowrap !important;
       overflow: hidden !important;
       text-overflow: ellipsis !important;
@@ -866,19 +855,19 @@ const ProductDashboard = ({ showNotification }) => {
           {/* Estatísticas */}
           <div style={styles.statsGrid}>
             <div style={styles.statCard}>
-              <h3 style={{...styles.statNumber, ...styles.statNumber1}}>{productStats.totalProducts}</h3>
+              <h3 style={styles.statNumber}>{productStats.totalProducts}</h3>
               <p style={styles.statLabel}>Total de Produtos</p>
             </div>
             <div style={styles.statCard}>
-              <h3 style={{...styles.statNumber, ...styles.statNumber2}}>{productStats.activeProducts}</h3>
+              <h3 style={styles.statNumber}>{productStats.activeProducts}</h3>
               <p style={styles.statLabel}>Produtos Ativos</p>
             </div>
             <div style={styles.statCard}>
-              <h3 style={{...styles.statNumber, ...styles.statNumber3}}>{productStats.totalCategories}</h3>
+              <h3 style={styles.statNumber}>{productStats.totalCategories}</h3>
               <p style={styles.statLabel}>Categorias</p>
             </div>
             <div style={styles.statCard}>
-              <h3 style={{...styles.statNumber, ...styles.statNumber4}}>R$ {productStats.averagePrice}</h3>
+              <h3 style={styles.statNumber}>R$ {productStats.averagePrice}</h3>
               <p style={styles.statLabel}>Preço Médio</p>
             </div>
           </div>

@@ -2,13 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit3, Trash2, Calendar, RefreshCw, Users, TrendingUp, Clock, X } from 'lucide-react';
 
-const ProfessionalDashboard = ({ showNotification }) => {
-  // ✅ ESTADOS PRINCIPAIS (MANTIDOS IGUAIS)
+const ProfessionalDashboard = () => {
+  // ✅ ESTADOS PRINCIPAIS
   const [professionals, setProfessionals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingProfessional, setEditingProfessional] = useState(null);
-  const [hoveredCard, setHoveredCard] = useState(null); // ✨ NOVO: Para hover dos cards
   
   // ✅ ESTADOS DE LIMITES DE PLANO (COMO NO ORIGINAL)
   const [planLimits, setPlanLimits] = useState({ current: 0, max: 1, plan: 'BASIC' });
@@ -41,15 +40,17 @@ const ProfessionalDashboard = ({ showNotification }) => {
     display_order: 0
   });
 
-  // ✅ TODAS AS FUNÇÕES MANTIDAS IGUAIS (getAuthToken, isAuthenticated, etc.)
+  // ✅ FUNÇÃO PARA OBTER TOKEN (VERSÃO OTIMIZADA COM MAIS DEBUG)
   const getAuthToken = () => {
     if (typeof window === 'undefined') return null;
     
     console.log('🔍 [DEBUG] Buscando token de autenticação...');
     
+    // Buscar chave específica do Supabase (padrão: sb-*-auth-token)
     const allKeys = Object.keys(localStorage);
     console.log('🔑 [DEBUG] Chaves disponíveis no localStorage:', allKeys.length);
     
+    // Buscar chave do Supabase
     const supabaseKey = allKeys.find(key => 
       key.startsWith('sb-') && key.endsWith('-auth-token')
     );
@@ -78,6 +79,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
       console.warn('⚠️ [DEBUG] Chave do Supabase não encontrada');
     }
     
+    // Fallback para outras chaves possíveis
     const fallbackKeys = ['access_token', 'token', 'auth_token', 'user_token'];
     for (const key of fallbackKeys) {
       const stored = localStorage.getItem(key);
@@ -96,6 +98,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
     return null;
   };
 
+  // ✅ FUNÇÃO DE AUTENTICAÇÃO OTIMIZADA
   const isAuthenticated = () => {
     const token = getAuthToken();
     const result = !!token;
@@ -103,6 +106,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
     return result;
   };
 
+  // ✅ FUNÇÃO makeAuthenticatedRequest OTIMIZADA
   const makeAuthenticatedRequest = async (url, options = {}) => {
     console.log('📡 [DEBUG] Iniciando requisição autenticada:', {
       url: url,
@@ -145,6 +149,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
       } else {
         console.error('❌ [DEBUG] Requisição falhou:', statusInfo);
         
+        // Debug específico para erro 401 (token expirado)
         if (response.status === 401) {
           console.error('🔑 [DEBUG] Token pode estar expirado - verificar autenticação');
         }
@@ -157,6 +162,7 @@ const ProfessionalDashboard = ({ showNotification }) => {
     }
   };
 
+  // ✅ FUNÇÃO PARA CARREGAR LIMITES DO PLANO
   const loadPlanLimits = async () => {
     try {
       console.log('📊 [DEBUG] Carregando limites do plano...');
@@ -182,20 +188,24 @@ const ProfessionalDashboard = ({ showNotification }) => {
     }
   };
 
+  // ✅ FUNÇÃO PARA CARREGAR ESTATÍSTICAS REAIS (SEM SIMULAÇÃO)
   const loadStatistics = async () => {
     try {
       console.log('📈 [DEBUG] Carregando estatísticas reais...');
       
+      // Buscar apenas dados reais de appointments da API
       const response = await makeAuthenticatedRequest('http://localhost:3001/api/statistics/appointments');
       
       if (response && response.ok) {
         const data = await response.json();
         console.log('✅ [DEBUG] Estatísticas carregadas:', data);
         
+        // Usar apenas dados reais da API
         setProfessionalStats(prev => ({
           ...prev,
           totalAppointments: data.totalAppointments || 0,
           monthlyGrowth: data.monthlyGrowth || 0
+          // totalProfessionals será atualizado em loadProfessionals
         }));
       } else {
         console.warn('⚠️ [DEBUG] API de estatísticas não disponível - usando zeros');
@@ -207,93 +217,47 @@ const ProfessionalDashboard = ({ showNotification }) => {
       }
     } catch (error) {
       console.error('❌ [DEBUG] Erro ao carregar estatísticas:', error);
+      // Manter valores atuais em caso de erro
     }
   };
 
-  const loadProfessionalsOptimized = async () => {
+  // ✅ FUNÇÃO PARA CARREGAR PROFISSIONAIS
+  const loadProfessionals = async () => {
     try {
-      console.log('👥 Carregando profissionais (otimizado)...');
+      console.log('👥 [DEBUG] Carregando profissionais...');
       const response = await makeAuthenticatedRequest('http://localhost:3001/api/professionals?active_only=true');
       
       if (response && response.ok) {
         const data = await response.json();
-        const professionalsData = data.data || [];
+        console.log('✅ [DEBUG] Profissionais carregados:', data.data?.length || 0);
         
+        const professionalsData = data.data || [];
         setProfessionals(professionalsData);
+        
+        // Atualizar estatística real baseada nos dados carregados
         setProfessionalStats(prev => ({ 
           ...prev, 
           totalProfessionals: professionalsData.length
         }));
         
-        console.log(`✅ ${professionalsData.length} profissionais carregados RAPIDAMENTE`);
-        return professionalsData; // ← RETORNA para usar no calendar batch
-        
+        // Carregar status do calendar para cada profissional
+        if (professionalsData.length > 0) {
+          console.log('📅 [DEBUG] Carregando status de calendário para cada profissional...');
+          for (const prof of professionalsData) {
+            await loadCalendarStatus(prof.id);
+          }
+        }
       } else {
-        console.error('❌ Erro ao carregar profissionais');
+        console.error('❌ [DEBUG] Erro ao carregar profissionais da API');
         setProfessionals([]);
-        return [];
       }
     } catch (error) {
-      console.error('❌ Erro de rede:', error);
+      console.error('❌ [DEBUG] Erro de rede ao carregar profissionais:', error);
       setProfessionals([]);
-      return [];
     }
   };
 
-const loadCalendarStatusBatch = async (professionalsData) => {
-  try {
-    console.log('📅 Iniciando carregamento de calendários em LOTE...');
-    
-    // ✨ TODOS OS CALENDÁRIOS EM PARALELO!
-    const calendarPromises = professionalsData.map(async (prof) => {
-      try {
-        const response = await makeAuthenticatedRequest(`http://localhost:3001/api/calendar/status/${prof.id}`);
-        
-        if (response && response.ok) {
-          const data = await response.json();
-          return {
-            professionalId: prof.id,
-            connected: data.professional?.connected || false,
-            last_sync: data.professional?.last_sync
-          };
-        } else {
-          return {
-            professionalId: prof.id,
-            connected: false,
-            last_sync: null
-          };
-        }
-      } catch (error) {
-        console.error(`❌ Erro calendar ${prof.id}:`, error);
-        return {
-          professionalId: prof.id,
-          connected: false,
-          last_sync: null
-        };
-      }
-    });
-    
-    // ✨ AGUARDAR TODOS EM PARALELO
-    const calendarResults = await Promise.all(calendarPromises);
-    
-    // ✨ ATUALIZAR STATUS EM LOTE
-    const newCalendarStatus = {};
-    calendarResults.forEach(result => {
-      newCalendarStatus[result.professionalId] = {
-        connected: result.connected,
-        last_sync: result.last_sync
-      };
-    });
-    
-    setCalendarStatus(newCalendarStatus);
-    console.log(`✅ ${calendarResults.length} calendários carregados em PARALELO`);
-    
-  } catch (error) {
-    console.error('❌ Erro no carregamento batch de calendários:', error);
-  }
-};
-
-
+  // ✅ FUNÇÃO PARA CARREGAR STATUS DO GOOGLE CALENDAR COM DEBUG MELHORADO
   const loadCalendarStatus = async (professionalId) => {
     try {
       console.log(`📅 [DEBUG] Verificando status do Google Calendar para profissional ${professionalId}...`);
@@ -335,6 +299,7 @@ const loadCalendarStatusBatch = async (professionalsData) => {
     }
   };
 
+  // ✅ FUNÇÃO PARA CONECTAR GOOGLE CALENDAR COM DEBUG MELHORADO
   const handleConnectCalendar = async (professional) => {
     try {
       setCalendarLoading(prev => ({ ...prev, [professional.id]: true }));
@@ -349,16 +314,18 @@ const loadCalendarStatusBatch = async (professionalsData) => {
         console.log('✅ [DEBUG] URL de autorização OAuth2 gerada:', data.auth_url ? 'SIM' : 'NÃO');
         
         if (data.auth_url) {
+          // Abrir popup para autenticação OAuth2
           const popup = window.open(data.auth_url, 'google-auth', 'width=500,height=600');
           
           if (!popup) {
-            showNotification('Por favor, permita popups para conectar o Google Calendar', 'warning');
+            alert('Por favor, permita popups para conectar o Google Calendar');
             setCalendarLoading(prev => ({ ...prev, [professional.id]: false }));
             return;
           }
           
           console.log('🪟 [DEBUG] Popup OAuth2 aberto, aguardando fechamento...');
           
+          // Monitorar o popup
           const checkClosed = setInterval(() => {
             if (popup.closed) {
               clearInterval(checkClosed);
@@ -372,21 +339,22 @@ const loadCalendarStatusBatch = async (professionalsData) => {
           }, 1000);
         } else {
           console.error('❌ [DEBUG] API não retornou auth_url');
-          showNotification('Erro interno: URL de autorização não gerada', 'error');
+          alert('Erro interno: URL de autorização não gerada');
           setCalendarLoading(prev => ({ ...prev, [professional.id]: false }));
         }
       } else {
         console.error('❌ [DEBUG] Erro na API de conexão do calendar:', response?.status);
-        showNotification('Erro ao conectar com Google Calendar. Tente novamente.', 'error');
+        alert('Erro ao conectar com Google Calendar. Tente novamente.');
         setCalendarLoading(prev => ({ ...prev, [professional.id]: false }));
       }
     } catch (error) {
       console.error('❌ [DEBUG] Erro de rede ao conectar calendar:', error);
-      showNotification('Erro de conexão. Verifique sua internet e tente novamente.', 'error');
+      alert('Erro de conexão. Verifique sua internet e tente novamente.');
       setCalendarLoading(prev => ({ ...prev, [professional.id]: false }));
     }
   };
 
+  // ✅ FUNÇÃO PARA VISUALIZAR AGENDA COM DEBUG MELHORADO
   const handleViewCalendar = async (professional, retryCount = 0) => {
       console.log('📅 Visualizando agenda de:', professional.name);
       setSelectedProfessional(professional);
@@ -399,9 +367,10 @@ const loadCalendarStatusBatch = async (professionalsData) => {
         if (response && response.ok) {
           const data = await response.json();
           
+          // ✅ RETRY AUTOMÁTICO SE TOKEN FOI RENOVADO
           if (data.token_refreshed && retryCount < 1) {
             console.log('🔄 Token renovado - tentando novamente...');
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Aguardar 1 segundo
             return handleViewCalendar(professional, retryCount + 1);
           }
           
@@ -419,62 +388,7 @@ const loadCalendarStatusBatch = async (professionalsData) => {
       setCalendarLoading(prev => ({ ...prev, [professional.id]: false }));
   };
 
-  const renderCalendarButton = (professional) => {
-    const status = calendarStatus[professional.id];
-    const isLoading = calendarLoading[professional.id];
-    
-    // ✨ Se ainda não carregou o status, mostrar "carregando"
-    const isStatusLoading = status === undefined;
-    
-    return (
-      <button 
-        style={{
-          ...styles.actionButton,
-          background: status?.connected 
-            ? 'rgba(0, 166, 147, 0.2)' 
-            : isStatusLoading 
-              ? 'rgba(255, 255, 255, 0.1)' // ← Cinza quando carregando status
-              : 'rgba(255, 193, 7, 0.15)',
-          borderColor: status?.connected 
-            ? 'rgba(0, 166, 147, 0.4)' 
-            : isStatusLoading 
-              ? 'rgba(255, 255, 255, 0.2)'
-              : 'rgba(255, 193, 7, 0.3)',
-          color: status?.connected 
-            ? '#00A693' 
-            : isStatusLoading 
-              ? 'rgba(255, 255, 255, 0.5)'
-              : 'rgba(255, 193, 7, 0.9)',
-          cursor: (isLoading || isStatusLoading) ? 'wait' : 'pointer',
-          ...(isHovered && status?.connected ? styles.calendarButtonHover : {}),
-          ...(isHovered && !status?.connected && !isStatusLoading ? styles.calendarButtonDisconnectedHover : {})
-        }}
-        onClick={() => {
-          if (isStatusLoading) return; // ← Não clica se ainda carregando
-          
-          if (status?.connected) {
-            handleViewCalendar(professional);
-          } else {
-            handleConnectCalendar(professional);
-          }
-        }}
-        disabled={isLoading || isStatusLoading}
-        title={
-          isStatusLoading 
-            ? 'Verificando status do calendário...'
-            : status?.connected 
-              ? `Ver agenda de ${professional.name}` 
-              : `Conectar Google Calendar de ${professional.name}`
-        }
-      >
-        {(isLoading || isStatusLoading) ? (
-          <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-        ) : (
-          <Calendar size={16} />
-        )}
-      </button>
-    );
-  };
+  // ✅ FUNÇÃO PARA ABRIR MODAL DE NOVO PROFISSIONAL
   const openNewModal = () => {
     setEditingProfessional(null);
     setFormData({
@@ -492,6 +406,7 @@ const loadCalendarStatusBatch = async (professionalsData) => {
     setShowModal(true);
   };
 
+  // ✅ FUNÇÃO PARA ABRIR MODAL DE EDIÇÃO
   const openEditModal = (professional) => {
     setEditingProfessional(professional);
     setFormData({
@@ -509,6 +424,7 @@ const loadCalendarStatusBatch = async (professionalsData) => {
     setShowModal(true);
   };
 
+  // ✅ FUNÇÃO PARA FECHAR MODAL
   const closeModal = () => {
     setShowModal(false);
     setEditingProfessional(null);
@@ -526,17 +442,19 @@ const loadCalendarStatusBatch = async (professionalsData) => {
     });
   };
 
+  // ✅ FUNÇÃO PARA SALVAR PROFISSIONAL
   const handleSave = async () => {
     try {
       console.log('💾 [DEBUG] Salvando profissional...');
       
       if (!formData.name || !formData.email || !formData.specialty) {
-        showNotification('Preencha os campos obrigatórios: Nome, Email e Especialidade', 'warning');
+        alert('Por favor, preencha os campos obrigatórios: Nome, Email e Especialidade');
         return;
       }
 
+      // ✅ VERIFICAÇÃO DE LIMITES
       if (!editingProfessional && planLimits.max !== -1 && professionals.length >= planLimits.max) {
-        showNotification(`Plano ${planLimits.plan} permite apenas ${planLimits.max} profissional(is). Faça upgrade para adicionar mais.`, 'warning');
+        alert(`Plano ${planLimits.plan} permite apenas ${planLimits.max} profissional(is). Faça upgrade para adicionar mais.`);
         return;
       }
 
@@ -575,29 +493,30 @@ const loadCalendarStatusBatch = async (professionalsData) => {
           loadProfessionals(),
           loadPlanLimits()
         ]);
-        showNotification(editingProfessional ? 'Profissional atualizado com sucesso! 👨‍⚕️' : 'Profissional adicionado com sucesso! 👨‍⚕️', 'success');
+        alert(editingProfessional ? 'Profissional atualizado com sucesso!' : 'Profissional adicionado com sucesso!');
       } else if (response) {
         try {
           const errorData = await response.json();
           const errorMessage = errorData.error || 'Erro ao salvar profissional';
           console.error('❌ [DEBUG] Erro da API:', errorMessage);
-          showNotification(`Erro: ${errorMessage}`, 'error');
+          alert(`Erro: ${errorMessage}`);
         } catch {
           console.error('❌ [DEBUG] Erro HTTP:', response.status);
-          showNotification(`Erro HTTP ${response.status}: Verifique os dados e tente novamente`, 'error');
+          alert(`Erro HTTP ${response.status}: Verifique os dados e tente novamente`);
         }
       } else {
         console.error('❌ [DEBUG] Problema de autenticação ao salvar');
-        showNotification('Erro de autenticação. Faça login novamente.', 'error');
+        alert('Erro de autenticação. Faça login novamente.');
       }
     } catch (error) {
       console.error('❌ [DEBUG] Erro de rede ao salvar:', error.message);
-      showNotification('Erro de conexão. Verifique sua internet e tente novamente.', 'error');
+      alert('Erro de conexão. Verifique sua internet e tente novamente.');
     }
   };
 
+  // ✅ FUNÇÃO PARA DELETAR PROFISSIONAL
   const handleDelete = async (professional) => {
-    if (!window.confirm(`Tem certeza que deseja remover ${professional.name}?`)) {
+    if (!confirm(`Tem certeza que deseja remover ${professional.name}?`)) {
       return;
     }
 
@@ -614,62 +533,51 @@ const loadCalendarStatusBatch = async (professionalsData) => {
           loadProfessionals(),
           loadPlanLimits()
         ]);
-        
+        alert('Profissional removido com sucesso!');
       } else if (response) {
         try {
           const errorData = await response.json();
           const errorMessage = errorData.error || 'Erro ao remover profissional';
           console.error('❌ [DEBUG] Erro da API:', errorMessage);
-          showNotification(`Erro: ${errorMessage}`, 'error');
+          alert(`Erro: ${errorMessage}`);
         } catch {
           console.error('❌ [DEBUG] Erro HTTP:', response.status);
-          showNotification(`Erro HTTP ${response.status}: Verifique e tente novamente`, 'error');
+          alert(`Erro HTTP ${response.status}: Verifique e tente novamente`);
         }
       } else {
         console.error('❌ [DEBUG] Problema de autenticação ao deletar');
-        showNotification('Erro de autenticação. Faça login novamente.', 'error');
+        alert('Erro de autenticação. Faça login novamente.');
       }
     } catch (error) {
       console.error('❌ [DEBUG] Erro de rede ao deletar:', error.message);
-      showNotification('Erro de conexão. Verifique sua internet e tente novamente.', 'error');
+      alert('Erro de conexão. Verifique sua internet e tente novamente.');
     }
   };
 
+  // ✅ CARREGAR DADOS INICIAIS COM LOGS
   useEffect(() => {
-    const loadDataOptimized = async () => {
-      console.log('🚀 Iniciando carregamento OTIMIZADO...');
+    const loadData = async () => {
+      console.log('🚀 [DEBUG] Iniciando carregamento de dados iniciais...');
       setLoading(true);
       
       try {
-        // ✨ FASE 1: Carregar dados básicos RAPIDAMENTE (paralelo)
-        console.log('⚡ Fase 1: Carregando dados básicos...');
-        const [professionalsResult] = await Promise.all([
-          loadProfessionalsOptimized(), // ← SEM calendar status
+        await Promise.all([
+          loadProfessionals(),
           loadPlanLimits(),
-          loadStatistics()
+          loadStatistics() // ✅ Carregar estatísticas reais
         ]);
-        
-        // ✨ FASE 2: Mostrar interface IMEDIATAMENTE
-        console.log('✅ Fase 1 concluída - Interface liberada!');
-        setLoading(false); // ← LIBERA A INTERFACE AQUI!
-        
-        // ✨ FASE 3: Carregar calendar status em BACKGROUND
-        if (professionalsResult && professionalsResult.length > 0) {
-          console.log('📅 Fase 2: Carregando calendários em background...');
-          loadCalendarStatusBatch(professionalsResult); // ← EM PARALELO
-        }
-        
+        console.log('✅ [DEBUG] Todos os dados iniciais carregados com sucesso');
       } catch (error) {
-        console.error('❌ Erro no carregamento otimizado:', error);
-        setLoading(false);
+        console.error('❌ [DEBUG] Erro ao carregar dados iniciais:', error);
       }
+      
+      setLoading(false);
     };
 
-    loadDataOptimized();
+    loadData();
   }, []);
 
-
-  // ✅ ESTILOS ATUALIZADOS
+  // ✅ ESTILOS PREMIUM (MANTIDOS IGUAIS)
   const styles = {
     container: {
       padding: '24px',
@@ -705,7 +613,32 @@ const loadCalendarStatusBatch = async (professionalsData) => {
       transition: 'all 0.2s ease',
       boxShadow: '0 4px 12px rgba(109, 74, 255, 0.3)'
     },
-    // ✅ CARDS DE MÉTRICAS IGUAL AOS DE PRODUTOS
+    planBanner: {
+      background: 'rgba(255, 255, 255, 0.08)',
+      backdropFilter: 'blur(12px)',
+      border: '1px solid rgba(255, 255, 255, 0.12)',
+      borderRadius: '16px',
+      padding: '20px 24px',
+      marginBottom: '24px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center'
+    },
+    planInfo: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px'
+    },
+    planText: {
+      fontWeight: '600',
+      color: 'rgba(255, 255, 255, 0.95)',
+      fontSize: '16px'
+    },
+    planSubtext: {
+      fontSize: '14px',
+      color: 'rgba(255, 255, 255, 0.7)',
+      marginTop: '4px'
+    },
     statsGrid: {
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -713,57 +646,36 @@ const loadCalendarStatusBatch = async (professionalsData) => {
       marginBottom: '32px'
     },
     statCard: {
-      background: 'rgba(255, 255, 255, 0.75)', // ✨ Fundo hover fixo igual produtos
-      backdropFilter: 'blur(20px)', // ✨ Mais blur
-      border: '1px solid rgba(255, 255, 255, 0.4)',
+      background: 'rgba(255, 255, 255, 0.08)',
+      backdropFilter: 'blur(12px)',
+      border: '1px solid rgba(255, 255, 255, 0.12)',
       borderRadius: '16px',
       padding: '24px',
-      textAlign: 'center',
-      boxShadow: `
-        inset 0 1px 0 rgba(255, 255, 255, 0.4),
-        inset 0 -1px 0 rgba(255, 255, 255, 0.2),
-        0 4px 20px rgba(255, 255, 255, 0.1)
-      ` // ✨ Sombra igual hover das linhas
+      textAlign: 'center'
     },
     statNumber: {
       fontSize: '32px',
       fontWeight: '700',
+      color: '#00A693',
       margin: '0 0 8px 0'
     },
-    // ✨ Números coloridos para cada card (igual produtos)
-    statNumber1: { color: '#6D4AFF' }, // Roxo vibrante - Total
-    statNumber2: { color: '#00A693' }, // Verde neon - Consultas
-    statNumber3: { color: '#FF6B6B' }, // Coral vibrante - Crescimento
     statLabel: {
       fontSize: '14px',
-      color: '#2c2c2c', // ✨ Roxo escuro quase preto (igual produtos)
-      margin: 0,
-      fontWeight: '600'
+      color: 'rgba(255, 255, 255, 0.7)',
+      margin: 0
     },
-    // ✅ CARDS DE PROFISSIONAIS ATUALIZADOS
     professionalsGrid: {
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
       gap: '20px'
     },
     professionalCard: {
-      background: 'rgba(255, 255, 255, 0.08)', // ✨ Fundo normal sem hover
+      background: 'rgba(255, 255, 255, 0.08)',
       backdropFilter: 'blur(12px)',
       border: '1px solid rgba(255, 255, 255, 0.12)',
       borderRadius: '16px',
       padding: '24px',
-      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', // ✨ Transição suave
-      cursor: 'pointer'
-    },
-    // ✨ NOVO: Card em hover (igual produtos)
-    professionalCardHover: {
-      background: 'rgba(255, 255, 255, 0.75)', // ✨ Mesma opacidade dos produtos
-      backdropFilter: 'blur(20px)',
-      boxShadow: `
-        inset 0 1px 0 rgba(255, 255, 255, 0.4),
-        inset 0 -1px 0 rgba(255, 255, 255, 0.2),
-        0 4px 20px rgba(255, 255, 255, 0.1)
-      `
+      transition: 'all 0.2s ease'
     },
     professionalHeader: {
       display: 'flex',
@@ -774,26 +686,25 @@ const loadCalendarStatusBatch = async (professionalsData) => {
     professionalName: {
       fontSize: '18px',
       fontWeight: '600',
-      margin: '0 0 4px 0',
-      transition: 'color 0.2s ease' // ✨ Transição de cor
+      color: 'rgba(255, 255, 255, 0.95)',
+      margin: '0 0 4px 0'
     },
     professionalSpecialty: {
       fontSize: '14px',
-      margin: 0,
-      transition: 'color 0.2s ease' // ✨ Transição de cor
+      color: 'rgba(255, 255, 255, 0.7)',
+      margin: 0
     },
     professionalInfo: {
       marginBottom: '16px'
     },
     professionalDetail: {
       fontSize: '13px',
+      color: 'rgba(255, 255, 255, 0.6)',
       margin: '4px 0',
       display: 'flex',
       alignItems: 'center',
-      gap: '8px',
-      transition: 'color 0.2s ease' // ✨ Transição de cor
+      gap: '8px'
     },
-    // ✅ BOTÕES ATUALIZADOS
     actionButton: {
       background: 'rgba(255, 255, 255, 0.1)',
       border: '1px solid rgba(255, 255, 255, 0.2)',
@@ -804,47 +715,9 @@ const loadCalendarStatusBatch = async (professionalsData) => {
       alignItems: 'center',
       justifyContent: 'center',
       cursor: 'pointer',
-      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', // ✨ Transição suave
+      transition: 'all 0.2s ease',
       color: 'rgba(255, 255, 255, 0.8)'
     },
-    // ✨ BOTÃO EDITAR AZUL COM TRANSPARÊNCIA
-    editButton: {
-      background: 'rgba(52, 152, 219, 0.1)', // ✨ Azul com transparência suave
-      border: '1px solid rgba(54, 152, 219, 0.2)', // ✨ Borda mais suave e delicada
-      borderColor: 'rgba(52, 152, 219, 0.3)', // ✨ Borda suave igual calendário/deletar
-      color: 'rgba(52, 152, 219, 0.9)'
-    },
-    // ✨ HOVER DOS BOTÕES (ASCENDEM)
-    editButtonHover: {
-      background: '#3498db', // ✨ Azul sólido
-      color: 'white',
-      borderColor: '#3498db',
-      boxShadow: '0 8px 25px rgba(52, 152, 219, 0.6), 0 0 20px rgba(52, 152, 219, 0.4)',
-      transform: 'scale(1.1) translateY(-2px)' // ✨ Ascende
-    },
-    calendarButtonHover: {
-      background: '#00A693',
-      color: 'white',
-      borderColor: '#00A693',
-      boxShadow: '0 8px 25px rgba(0, 166, 147, 0.6), 0 0 20px rgba(0, 166, 147, 0.4)',
-      transform: 'scale(1.1) translateY(-2px)' // ✨ Ascende
-    },
-    // ✨ NOVO: Hover para calendário desconectado (amarelo)
-    calendarButtonDisconnectedHover: {
-      background: '#ffc107', // ✨ Amarelo sólido
-      color: 'white',
-      borderColor: '#ffc107',
-      boxShadow: '0 8px 25px rgba(255, 193, 7, 0.6), 0 0 20px rgba(255, 193, 7, 0.4)',
-      transform: 'scale(1.1) translateY(-2px)' // ✨ Ascende
-    },
-    deleteButtonHover: {
-      background: '#e74c3c',
-      color: 'white',
-      borderColor: '#e74c3c',
-      boxShadow: '0 8px 25px rgba(231, 76, 60, 0.6), 0 0 20px rgba(231, 76, 60, 0.4)',
-      transform: 'scale(1.1) translateY(-2px)' // ✨ Ascende
-    },
-    // Estilos do modal mantidos iguais
     modal: {
       position: 'fixed',
       top: 0,
@@ -1016,24 +889,8 @@ const loadCalendarStatusBatch = async (professionalsData) => {
     return (
       <div style={styles.container}>
         <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-          <RefreshCw size={32} style={{ 
-            animation: 'spin 1s linear infinite', 
-            color: '#6D4AFF', 
-            marginBottom: '16px' 
-          }} />
-          <p style={{ 
-            color: 'rgba(255, 255, 255, 0.7)', 
-            fontSize: '16px',
-            marginBottom: '8px'
-          }}>
-            Carregando profissionais...
-          </p>
-          <p style={{ 
-            color: 'rgba(255, 255, 255, 0.5)', 
-            fontSize: '12px'
-          }}>
-            ⚡ Otimizado para carregamento rápido
-          </p>
+          <RefreshCw size={32} style={{ animation: 'spin 1s linear infinite', color: '#6D4AFF', marginBottom: '16px' }} />
+          <p style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '16px' }}>Carregando profissionais...</p>
         </div>
       </div>
     );
@@ -1058,25 +915,39 @@ const loadCalendarStatusBatch = async (professionalsData) => {
         </button>
       </div>
 
-      {/* ✅ PLAN BANNER REMOVIDO - SERÁ MOVIDO PARA SIDEBAR */}
+      {/* Plan Limits Banner */}
+      <div style={styles.planBanner}>
+        <div style={styles.planInfo}>
+          <Users size={20} style={{ color: '#6D4AFF' }} />
+          <div>
+            <div style={styles.planText}>
+              Profissionais: {planLimits.current} de {planLimits.max === -1 ? '∞' : planLimits.max}
+            </div>
+            <div style={styles.planSubtext}>Plano {planLimits.plan} ativo</div>
+          </div>
+        </div>
+        {planLimits.max !== -1 && planLimits.current >= planLimits.max && (
+          <div style={{ color: '#f59e0b', fontSize: '14px', fontWeight: '500' }}>Limite atingido</div>
+        )}
+      </div>
 
-      {/* ✅ ESTATÍSTICAS ATUALIZADAS - IGUAL PRODUTOS */}
+      {/* Estatísticas - APENAS DADOS REAIS */}
       <div style={styles.statsGrid}>
         <div style={styles.statCard}>
-          <h3 style={{...styles.statNumber, ...styles.statNumber1}}>{professionalStats.totalProfessionals}</h3>
+          <h3 style={styles.statNumber}>{professionalStats.totalProfessionals}</h3>
           <p style={styles.statLabel}>Total de Profissionais</p>
         </div>
         <div style={styles.statCard}>
-          <h3 style={{...styles.statNumber, ...styles.statNumber2}}>{professionalStats.totalAppointments}</h3>
+          <h3 style={styles.statNumber}>{professionalStats.totalAppointments}</h3>
           <p style={styles.statLabel}>Consultas Este Mês</p>
         </div>
         <div style={styles.statCard}>
-          <h3 style={{...styles.statNumber, ...styles.statNumber3}}>{professionalStats.monthlyGrowth.toFixed(1)}%</h3>
+          <h3 style={styles.statNumber}>{professionalStats.monthlyGrowth.toFixed(1)}%</h3>
           <p style={styles.statLabel}>Crescimento Mensal</p>
         </div>
       </div>
 
-      {/* ✅ LISTA DE PROFISSIONAIS ATUALIZADA */}
+      {/* Lista de Profissionais */}
       {professionals.length === 0 ? (
         <div style={styles.emptyState}>
           <Users size={48} style={styles.emptyIcon} />
@@ -1085,141 +956,98 @@ const loadCalendarStatusBatch = async (professionalsData) => {
         </div>
       ) : (
         <div style={styles.professionalsGrid}>
-          {professionals.map((professional) => {
-            const isHovered = hoveredCard === professional.id;
-            return (
-              <div 
-                key={professional.id} 
-                style={{
-                  ...styles.professionalCard,
-                  ...(isHovered ? styles.professionalCardHover : {})
-                }}
-                onMouseEnter={() => setHoveredCard(professional.id)}
-                onMouseLeave={() => setHoveredCard(null)}
-              >
-                <div style={styles.professionalHeader}>
-                  <div>
-                    <h3 style={{
-                      ...styles.professionalName,
-                      color: isHovered ? '#2c2c2c' : 'rgba(255, 255, 255, 0.95)' // ✨ Roxo escuro no hover
-                    }}>
-                      {professional.name}
-                    </h3>
-                    <p style={{
-                      ...styles.professionalSpecialty,
-                      color: isHovered ? '#4a4a4a' : 'rgba(255, 255, 255, 0.7)' // ✨ Roxo escuro no hover
-                    }}>
-                      {professional.specialty}
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {/* ✅ Botão Google Calendar */}
-                    <button 
-                      style={{
-                        ...styles.actionButton,
-                        background: calendarStatus[professional.id]?.connected 
-                          ? 'rgba(0, 166, 147, 0.2)' 
-                          : 'rgba(255, 193, 7, 0.15)', // ✨ Amarelinho quando desconectado
-                        borderColor: calendarStatus[professional.id]?.connected 
-                          ? 'rgba(0, 166, 147, 0.4)' 
-                          : 'rgba(255, 193, 7, 0.3)', // ✨ Borda amarela quando desconectado
-                        color: calendarStatus[professional.id]?.connected 
-                          ? '#00A693' 
-                          : 'rgba(255, 193, 7, 0.9)', // ✨ Ícone amarelo quando desconectado
-                        cursor: calendarLoading[professional.id] ? 'wait' : 'pointer',
-                        ...(isHovered && calendarStatus[professional.id]?.connected ? styles.calendarButtonHover : {}),
-                        ...(isHovered && !calendarStatus[professional.id]?.connected ? styles.calendarButtonDisconnectedHover : {}) // ✨ Hover amarelo quando desconectado
-                      }}
-                      onClick={() => {
-                        if (calendarStatus[professional.id]?.connected) {
-                          handleViewCalendar(professional);
-                        } else {
-                          handleConnectCalendar(professional);
-                        }
-                      }}
-                      disabled={calendarLoading[professional.id]}
-                      title={calendarStatus[professional.id]?.connected 
-                        ? `Ver agenda de ${professional.name}` 
-                        : `Conectar Google Calendar de ${professional.name}`}
-                    >
-                      {calendarLoading[professional.id] ? (
-                        <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                      ) : (
-                        <Calendar size={16} />
-                      )}
-                    </button>
-                    
-                    {/* ✅ Botão Editar AZUL */}
-                    <button 
-                      style={{
-                        ...styles.actionButton,
-                        ...styles.editButton,
-                        ...(isHovered ? styles.editButtonHover : {})
-                      }}
-                      onClick={() => openEditModal(professional)}
-                      title="Editar profissional"
-                    >
-                      <Edit3 size={16} />
-                    </button>
-                    
-                    {/* ✅ Botão Deletar */}
-                    <button 
-                      style={{
-                        ...styles.actionButton,
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        borderColor: 'rgba(239, 68, 68, 0.3)',
-                        color: 'rgba(239, 68, 68, 0.8)',
-                        ...(isHovered ? styles.deleteButtonHover : {})
-                      }}
-                      onClick={() => handleDelete(professional)}
-                      title="Remover profissional"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+          {professionals.map((professional) => (
+            <div key={professional.id} style={styles.professionalCard}>
+              <div style={styles.professionalHeader}>
+                <div>
+                  <h3 style={styles.professionalName}>{professional.name}</h3>
+                  <p style={styles.professionalSpecialty}>{professional.specialty}</p>
                 </div>
-
-                <div style={styles.professionalInfo}>
-                  {professional.email && (
-                    <div style={{
-                      ...styles.professionalDetail,
-                      color: isHovered ? '#4a4a4a' : 'rgba(255, 255, 255, 0.6)' // ✨ Roxo escuro no hover
-                    }}>
-                      📧 {professional.email}
-                    </div>
-                  )}
-                  {professional.phone && (
-                    <div style={{
-                      ...styles.professionalDetail,
-                      color: isHovered ? '#4a4a4a' : 'rgba(255, 255, 255, 0.6)' // ✨ Roxo escuro no hover
-                    }}>
-                      📱 {professional.phone}
-                    </div>
-                  )}
-                  {professional.hourly_rate && (
-                    <div style={{
-                      ...styles.professionalDetail,
-                      color: isHovered ? '#4a4a4a' : 'rgba(255, 255, 255, 0.6)' // ✨ Roxo escuro no hover
-                    }}>
-                      💰 R$ {professional.hourly_rate}/hora
-                    </div>
-                  )}
-                  {calendarStatus[professional.id]?.connected && (
-                    <div style={{
-                      ...styles.professionalDetail,
-                      color: isHovered ? '#4a4a4a' : 'rgba(255, 255, 255, 0.6)' // ✨ Roxo escuro no hover
-                    }}>
-                      ✅ Google Calendar conectado
-                    </div>
-                  )}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {/* Ícone do Google Calendar */}
+                  <button 
+                    style={{
+                      ...styles.actionButton,
+                      background: calendarStatus[professional.id]?.connected 
+                        ? 'rgba(0, 166, 147, 0.2)' 
+                        : 'rgba(255, 255, 255, 0.1)',
+                      borderColor: calendarStatus[professional.id]?.connected 
+                        ? 'rgba(0, 166, 147, 0.4)' 
+                        : 'rgba(255, 255, 255, 0.2)',
+                      color: calendarStatus[professional.id]?.connected 
+                        ? '#00A693' 
+                        : 'rgba(255, 255, 255, 0.8)',
+                      cursor: calendarLoading[professional.id] ? 'wait' : 'pointer'
+                    }}
+                    onClick={() => {
+                      if (calendarStatus[professional.id]?.connected) {
+                        handleViewCalendar(professional);
+                      } else {
+                        handleConnectCalendar(professional);
+                      }
+                    }}
+                    disabled={calendarLoading[professional.id]}
+                    title={calendarStatus[professional.id]?.connected 
+                      ? `Ver agenda de ${professional.name}` 
+                      : `Conectar Google Calendar de ${professional.name}`}
+                  >
+                    {calendarLoading[professional.id] ? (
+                      <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                    ) : (
+                      <Calendar size={16} />
+                    )}
+                  </button>
+                  
+                  <button 
+                    style={styles.actionButton}
+                    onClick={() => openEditModal(professional)}
+                    title="Editar profissional"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+                  
+                  <button 
+                    style={{
+                      ...styles.actionButton,
+                      color: 'rgba(239, 68, 68, 0.8)',
+                      borderColor: 'rgba(239, 68, 68, 0.3)'
+                    }}
+                    onClick={() => handleDelete(professional)}
+                    title="Remover profissional"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </div>
-            );
-          })}
+
+              <div style={styles.professionalInfo}>
+                {professional.email && (
+                  <div style={styles.professionalDetail}>
+                    📧 {professional.email}
+                  </div>
+                )}
+                {professional.phone && (
+                  <div style={styles.professionalDetail}>
+                    📱 {professional.phone}
+                  </div>
+                )}
+                {professional.hourly_rate && (
+                  <div style={styles.professionalDetail}>
+                    💰 R$ {professional.hourly_rate}/hora
+                  </div>
+                )}
+                {calendarStatus[professional.id]?.connected && (
+                  <div style={styles.professionalDetail}>
+                    ✅ Google Calendar conectado
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* ✅ MODAIS MANTIDOS IGUAIS */}
+      {/* Modal de Adicionar/Editar */}
       {showModal && (
         <div style={styles.modal}>
           <div style={styles.modalContent}>
@@ -1334,7 +1162,7 @@ const loadCalendarStatusBatch = async (professionalsData) => {
         </div>
       )}
 
-      {/* Modal do Google Calendar - Mantido igual */}
+      {/* Modal do Google Calendar */}
       {showCalendarModal && selectedProfessional && (
         <div style={styles.modal}>
           <div style={styles.calendarModalContent}>
