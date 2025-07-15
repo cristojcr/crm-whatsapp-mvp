@@ -382,6 +382,34 @@ class TelegramProcessor {
             // Criar a data no fuso horário de Brasília (GMT-3)
             const appointmentDate = new Date(Date.UTC(year, month - 1, day, hours + 3, minutes, 0));
 
+            // ✅ VERIFICAR DISPONIBILIDADE ANTES DE CRIAR EVENTO
+            console.log("🔍 Verificando disponibilidade...");
+            const availabilityResponse = await fetch(`http://localhost:3001/api/calendar/check-availability/${selectedProfessional.id}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    startDateTime: appointmentDate.toISOString()
+                })
+            });
+
+            const availabilityResult = await availabilityResponse.json();
+            console.log("📊 Resultado da verificação de disponibilidade:", availabilityResult);
+
+            if (!availabilityResult.success || !availabilityResult.available) {
+                let errorMessage = "❌ *Ops!* O horário solicitado não está disponível.\n\n";
+                
+                if (!availabilityResult.within_business_hours) {
+                    errorMessage += "🕐 *Motivo:* Fora do horário de funcionamento.\n\n";
+                } else if (availabilityResult.is_blocked) {
+                    errorMessage += "🚫 *Motivo:* Horário bloqueado para agendamentos.\n\n";
+                }
+                
+                errorMessage += "💬 *Por favor, escolha outro horário ou entre em contato diretamente.*";
+                return errorMessage;
+            }
+
             // 📝 CRIAR EVENTO NO GOOGLE CALENDAR DO PROFISSIONAL
             const eventTitle = `Consulta - ${contact.name || contact.phone}`;
             const eventDescription = `👤 Paciente: ${contact.name || "Cliente"}\n📞 Telefone: ${contact.phone}\n\n👨‍⚕️ Profissional: ${selectedProfessional.name}\n${selectedProfessional.specialty ? `🎯 Especialidade: ${selectedProfessional.specialty}` : ""}\n\n🤖 Agendamento via IA WhatsApp CRM\n⏰ Agendado em: ${new Date().toLocaleString("pt-BR")}`;
@@ -389,7 +417,7 @@ class TelegramProcessor {
             // 🌐 CHAMAR API DO GOOGLE CALENDAR
             console.log("📡 Criando evento no Google Calendar...");
             const startDateTime = appointmentDate.toISOString();
-            const endDateTime = new Date(appointmentDate.getTime() + 60 * 60 * 1000).toISOString(); // +1 hora
+            const endDateTime = availabilityResult.calculated_end_time || new Date(appointmentDate.getTime() + 60 * 60 * 1000).toISOString();
 
             const requestBody = {
                 title: eventTitle,
@@ -418,7 +446,7 @@ class TelegramProcessor {
                 return "❌ *Ops!* Não consegui confirmar seu agendamento no momento. 😔\n\nTente novamente em alguns minutos ou entre em contato diretamente.";
             }
 
-            console.log("✅ Evento criado com sucesso:", eventResult.eventId);
+            console.log("✅ Evento criado com sucesso:", eventResult.event?.id);
 
             // 💾 SALVAR AGENDAMENTO NO BANCO
             const { error: appointmentError } = await supabaseAdmin
@@ -429,7 +457,7 @@ class TelegramProcessor {
                     professional_id: selectedProfessional.id,
                     scheduled_at: appointmentDate.toISOString(),
                     status: "confirmed",
-                    google_event_id: eventResult.eventId,
+                    google_event_id: eventResult.event?.id,
                     title: eventTitle,
                     description: eventDescription,
                     created_via: "telegram_ai",
