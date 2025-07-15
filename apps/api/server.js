@@ -381,6 +381,8 @@ app.use('/api/webhook', webhookRoutes);
 // Rotas de produtos
 app.use('/api/products', productRoutes);
 // Rotas multicanal (ID 2.12)
+// Rotas consentimentos
+app.use('/api/consent-bulk', require('./src/routes/consent-bulk'));
 console.log('🔧 REGISTRANDO ROTAS MULTICANAL...');
 console.log('📸 Registrando /api/instagram...');
 app.use('/api/instagram', instagramRoutes);

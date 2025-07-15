@@ -1,10 +1,3 @@
-// ===============================================
-// INTENTION ANALYZER - VERSÃO COMPLETA OTIMIZADA
-// ===============================================
-
-// ===============================================
-// CONFIGURAÇÃO DEEPSEEK
-// ===============================================
 const DEEPSEEK_CONFIG = {
   API_URL: 'https://api.deepseek.com/chat/completions',
   API_KEY: process.env.DEEPSEEK_API_KEY,
@@ -13,9 +6,6 @@ const DEEPSEEK_CONFIG = {
   MAX_TOKENS: 300
 };
 
-// ===============================================
-// TIPOS DE INTENÇÃO
-// ===============================================
 const INTENTION_TYPES = {
   SCHEDULING: 'scheduling',
   RESCHEDULING: 'rescheduling', 
@@ -50,9 +40,6 @@ const INTENTION_KEYWORDS = {
   ]
 };
 
-// ===============================================
-// FUNÇÃO: CONSTRUIR PROMPT COM CONTEXTO TEMPORAL
-// ===============================================
 function buildAnalysisPrompt(messageContent, context = {}) {
   const agora = new Date();
   const hoje = new Date(agora.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
@@ -109,9 +96,6 @@ CALCULE AS DATAS CORRETAMENTE baseado em hoje ser ${dataAtual}!`;
   return prompt;
 }
 
-// ===============================================
-// FUNÇÃO PRINCIPAL: ANÁLISE DE INTENÇÃO
-// ===============================================
 async function analyze(messageContent, context = {}) {
   try {
     if (!messageContent || typeof messageContent !== 'string') {
@@ -161,9 +145,6 @@ async function analyze(messageContent, context = {}) {
   }
 }
 
-// ===============================================
-// FUNÇÃO: ANÁLISE FALLBACK
-// ===============================================
 function analyzeFallback(messageContent) {
   try {
     console.log('🔄 Usando análise fallback...');
@@ -210,9 +191,6 @@ function analyzeFallback(messageContent) {
   }
 }
 
-// ===============================================
-// FUNÇÃO: ANÁLISE HÍBRIDA
-// ===============================================
 async function analyzeHybrid(messageContent, context = {}) {
   try {
     const aiResult = await analyze(messageContent, context);
@@ -240,9 +218,6 @@ async function analyzeHybrid(messageContent, context = {}) {
   }
 }
 
-// ===============================================
-// FUNÇÃO: DETECTAR MENÇÃO A SERVIÇOS
-// ===============================================
 function detectServiceMention(message, availableServices = []) {
   try {
     const messageLower = message.toLowerCase();
@@ -274,9 +249,6 @@ function detectServiceMention(message, availableServices = []) {
   }
 }
 
-// ===============================================
-// FUNÇÃO: EXTRAIR DATA/HORA
-// ===============================================
 function extractDateTime(message) {
   try {
     console.log('🕐 Extraindo data/hora:', message);
@@ -312,9 +284,28 @@ function extractDateTime(message) {
       }
     }
     
+    // Construir um objeto Date no fuso horário de Brasília para garantir a consistência
+    let finalDate = null;
+    if (suggestedDate && suggestedTime) {
+      const [year, month, day] = suggestedDate.toISOString().split('T')[0].split('-');
+      const [hour, minute] = suggestedTime.split(':');
+      // Criar a data no fuso horário de Brasília
+      finalDate = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+      // Ajustar para o offset de Brasília (GMT-3)
+      finalDate.setUTCHours(finalDate.getUTCHours() - 3);
+    } else if (suggestedDate) {
+      finalDate = new Date(suggestedDate.toISOString().split('T')[0] + 'T00:00:00-03:00');
+    } else if (suggestedTime) {
+      const [hour, minute] = suggestedTime.split(':');
+      finalDate = new Date();
+      finalDate.setHours(parseInt(hour), parseInt(minute), 0, 0);
+      // Ajustar para o offset de Brasília (GMT-3)
+      finalDate.setHours(finalDate.getHours() - (finalDate.getTimezoneOffset() / 60) - 3);
+    }
+
     return {
-      suggestedDate: suggestedDate ? suggestedDate.toISOString().split('T')[0] : null,
-      suggestedTime: suggestedTime,
+      suggestedDate: finalDate ? finalDate.toISOString().split('T')[0] : null,
+      suggestedTime: finalDate ? finalDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
       hasDateReference: suggestedDate !== null,
       hasTimeReference: suggestedTime !== null
     };
@@ -329,10 +320,6 @@ function extractDateTime(message) {
     };
   }
 }
-
-// ===============================================
-// FUNÇÕES MULTI-PROFISSIONAL
-// ===============================================
 
 function extractProfessionalPreference(message) {
   const lowerMessage = message.toLowerCase();
@@ -454,48 +441,41 @@ async function analyzeWithProfessionalPreference(message, contactId, companyId) 
   }
 }
 
-// ✅ NOVA FUNÇÃO MESTRA PARA LIDAR COM PRODUTOS E PROFISSIONAIS
 async function analyzeWithProductsAndProfessionals(message, contactId, companyId) {
     try {
         console.log('🛍️ Analisando com lógica de produtos...');
 
-        // 1. Tenta encontrar produtos correspondentes primeiro
         const matchingProducts = await findMatchingProducts(message, companyId);
 
         if (matchingProducts.length > 0) {
             console.log(`✅ Encontrados ${matchingProducts.length} produtos correspondentes.`);
-            // Se encontrou produtos, retorna uma análise com eles
             const basicAnalysis = await analyze(message);
             return {
                 ...basicAnalysis,
-                products: matchingProducts, // Adiciona os produtos encontrados
+                products: matchingProducts,
                 provider: 'deepseek-product-search',
                 contactId: contactId,
                 companyId: companyId
             };
         }
 
-        // 2. Se não encontrou produtos, usa a sua lógica existente de profissionais
         console.log('ℹ️ Nenhum produto encontrado. Usando análise de preferência de profissional...');
         return await analyzeWithProfessionalPreference(message, contactId, companyId);
 
     } catch (error) {
         console.error('❌ Erro na análise com produtos e profissionais:', error);
-        return analyzeFallback(message); // Usa o fallback em caso de erro
+        return analyzeFallback(message);
     }
 }
 
-// ✅ NOVA FUNÇÃO: Buscar produtos que correspondem ao texto
 async function findMatchingProducts(text, companyId) {
     try {
-        // Importar supabase aqui para garantir que esteja inicializado
         const { supabaseAdmin } = require('../config/supabase'); 
         
         const keywords = extractKeywords(text);
         if (keywords.length === 0) return [];
 
-        // Constrói uma query de busca mais flexível
-        const searchQuery = keywords.join(' & '); // Para busca de texto completo (tsvector)
+        const searchQuery = keywords.join(' & ');
 
         const { data: products, error } = await supabaseAdmin
             .from('products')
@@ -508,10 +488,10 @@ async function findMatchingProducts(text, companyId) {
                     calendar_connected
                 )
             `)
-            .eq('company_id', companyId) // Usando company_id como no seu código de profissionais
+            .eq('company_id', companyId)
             .eq('status', 'active')
             .not('professional_id', 'is', null)
-            .textSearch('name', searchQuery, { type: 'websearch' }); // Usando textSearch para relevância
+            .textSearch('name', searchQuery, { type: 'websearch' });
 
         if (error) {
             console.error('❌ Erro ao buscar produtos por IA:', error);
@@ -532,7 +512,6 @@ async function findMatchingProducts(text, companyId) {
     }
 }
 
-// ✅ NOVA FUNÇÃO: Extrair palavras-chave relevantes da mensagem
 function extractKeywords(text) {
     const commonWords = ['o', 'a', 'os', 'as', 'um', 'uma', 'de', 'do', 'da', 'quero', 'gostaria', 'preciso', 'fazer', 'marcar', 'agendar', 'consulta', 'atendimento'];
     
@@ -578,13 +557,8 @@ function determineSuggestedApproach(messagePreference, clientHistory) {
   };
 }
 
-// ===============================================
-// FUNÇÕES DE CONTEXTO HISTÓRICO
-// ===============================================
-
 async function getClientHistoricalContext(contactId, userId) {
   try {
-    // Importar supabase dinamicamente para evitar problemas de inicialização
     const { supabase } = require('../config/supabase');
     
     const { data: appointments, error: appointmentsError } = await supabase
@@ -673,9 +647,6 @@ async function analyzeWithProfessionalPreferenceWithContext(message, contactId, 
   }
 }
 
-// ===============================================
-// EXPORTAR TODAS AS FUNÇÕES
-// ===============================================
 module.exports = {
   analyze,
   analyzeFallback,
@@ -692,8 +663,8 @@ module.exports = {
   analyzeWithProfessionalPreferenceWithContext,
   buildAnalysisPrompt,
   analyzeWithProductsAndProfessionals,
-  findMatchingProducts, // Opcional, mas bom para testes
-  extractKeywords,      // Opcional, mas bom para testes
+  findMatchingProducts,
+  extractKeywords,
   INTENTION_TYPES,
   INTENTION_KEYWORDS
 };
