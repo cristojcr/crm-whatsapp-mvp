@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabase';
+import { LayoutDashboard, Settings, CalendarDays, LogOut } from 'lucide-react'; // Importar ícones
 
 import MultiChannelDashboard from '../../components/dashboard/MultiChannelDashboard';
 import ChannelSettings from '../../components/settings/ChannelSettings';
+import CalendarGlobal from '../../components/Global Calendar/CalendarGlobal'; // Importar o novo componente
 
 export default function MultiCanalPage() {
     const router = useRouter();
@@ -139,7 +141,8 @@ export default function MultiCanalPage() {
             position: 'fixed',
             top: 0,
             left: 0,
-            overflow: 'hidden'
+            overflow: 'hidden',
+            display: 'flex' // Adicionado para layout com sidebar
         },
 
         // Loading screen
@@ -213,6 +216,82 @@ export default function MultiCanalPage() {
             cursor: 'pointer',
             transition: 'all 0.3s ease',
             boxShadow: '0 4px 20px rgba(109, 74, 255, 0.3)'
+        },
+
+        // ✅ ESTILOS DO SIDEBAR
+        sidebar: {
+            width: '250px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(15px)',
+            borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: '0 4px 30px rgba(0, 0, 0, 0.1)'
+        },
+        sidebarHeader: {
+            marginBottom: '40px',
+            color: 'white',
+            fontSize: '24px',
+            fontWeight: '700',
+            letterSpacing: '-0.03em'
+        },
+        navMenu: {
+            listStyle: 'none',
+            padding: 0,
+            margin: 0,
+            width: '100%',
+            flexGrow: 1
+        },
+        navItem: {
+            marginBottom: '10px',
+            width: '100%'
+        },
+        navButton: {
+            width: '100%',
+            padding: '12px 15px',
+            borderRadius: '10px',
+            background: 'transparent',
+            border: 'none',
+            color: 'rgba(255, 255, 255, 0.7)',
+            fontSize: '16px',
+            fontWeight: '500',
+            textAlign: 'left',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            transition: 'all 0.2s ease'
+        },
+        navButtonActive: {
+            background: 'rgba(255, 255, 255, 0.15)',
+            color: 'white',
+            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)'
+        },
+        logoutButton: {
+            width: '100%',
+            padding: '12px 15px',
+            borderRadius: '10px',
+            background: 'rgba(255, 255, 255, 0.08)',
+            border: 'none',
+            color: 'rgba(255, 255, 255, 0.7)',
+            fontSize: '16px',
+            fontWeight: '500',
+            textAlign: 'left',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            transition: 'all 0.2s ease',
+            marginTop: '20px'
+        },
+        // ✅ ESTILOS DO CONTEÚDO PRINCIPAL
+        mainContent: {
+            flexGrow: 1,
+            padding: '20px',
+            overflowY: 'auto' // Para permitir scroll no conteúdo
         }
     };
 
@@ -309,7 +388,7 @@ export default function MultiCanalPage() {
         );
     }
 
-    // ✅ RENDERIZAÇÃO PRINCIPAL - SEM LIMITAÇÕES DE CONTAINER
+    // ✅ RENDERIZAÇÃO PRINCIPAL - COM SIDEBAR E CONTEÚDO
     return (
         <div style={styles.container}>
             {/* 🔒 BANNER OPCIONAL DE CONSENTIMENTOS */}
@@ -321,26 +400,106 @@ export default function MultiCanalPage() {
                 />
             )}
             
-            {/* ✅ CONTEÚDO DAS ABAS AGORA SEM LIMITAÇÕES DE CONTAINER */}
-            {activeTab === 'dashboard' && (
-                <MultiChannelDashboard 
-                    channels={channels} 
-                    loading={channelsLoading}
-                    user={user}
-                    onLogout={handleLogout}
-                    onChannelsUpdate={handleChannelsUpdate}
-                />
-            )}
-            
-            {activeTab === 'settings' && (
-                <ChannelSettings 
-                    initialChannels={channels}
-                    onUpdate={handleChannelsUpdate}
-                    userId={user?.id}
-                    userPlan={user?.plan || 'premium'}
-                />
-            )}
+            {/* SIDEBAR */}
+            <div style={styles.sidebar}>
+                <h2 style={styles.sidebarHeader}>Scalabots</h2>
+                <ul style={styles.navMenu}>
+                    <li style={styles.navItem}>
+                        <button 
+                            style={{
+                                ...styles.navButton,
+                                ...(activeTab === 'dashboard' ? styles.navButtonActive : {})
+                            }}
+                            onClick={() => setActiveTab('dashboard')}
+                        >
+                            <LayoutDashboard size={20} />
+                            Dashboard
+                        </button>
+                    </li>
+                    <li style={styles.navItem}>
+                        <button 
+                            style={{
+                                ...styles.navButton,
+                                ...(activeTab === 'professionals' ? styles.navButtonActive : {})
+                            }}
+                            onClick={() => setActiveTab('professionals')}
+                        >
+                            <Users size={20} />
+                            Profissionais
+                        </button>
+                    </li>
+                    <li style={styles.navItem}>
+                        <button 
+                            style={{
+                                ...styles.navButton,
+                                ...(activeTab === 'calendar' ? styles.navButtonActive : {})
+                            }}
+                            onClick={() => setActiveTab('calendar')}
+                        >
+                            <CalendarDays size={20} />
+                            Calendário
+                        </button>
+                    </li>
+                    <li style={styles.navItem}>
+                        <button 
+                            style={{
+                                ...styles.navButton,
+                                ...(activeTab === 'settings' ? styles.navButtonActive : {})
+                            }}
+                            onClick={() => setActiveTab('settings')}
+                        >
+                            <Settings size={20} />
+                            Configurações
+                        </button>
+                    </li>
+                </ul>
+                <button 
+                    style={styles.logoutButton}
+                    onClick={handleLogout}
+                >
+                    <LogOut size={20} />
+                    Sair
+                </button>
+            </div>
+
+            {/* CONTEÚDO PRINCIPAL */}
+            <div style={styles.mainContent}>
+                {activeTab === 'dashboard' && (
+                    <MultiChannelDashboard 
+                        channels={channels} 
+                        loading={channelsLoading}
+                        user={user}
+                        onLogout={handleLogout}
+                        onChannelsUpdate={handleChannelsUpdate}
+                    />
+                )}
+                
+                {activeTab === 'professionals' && (
+                    <MultiChannelDashboard 
+                        channels={channels} 
+                        loading={channelsLoading}
+                        user={user}
+                        onLogout={handleLogout}
+                        onChannelsUpdate={handleChannelsUpdate}
+                    />
+                )}
+
+                {activeTab === 'calendar' && (
+                    <CalendarGlobal 
+                        user={user}
+                        showNotification={() => { /* Implementar notificação */ }}
+                    />
+                )}
+
+                {activeTab === 'settings' && (
+                    <ChannelSettings 
+                        initialChannels={channels}
+                        onUpdate={handleChannelsUpdate}
+                        userId={user?.id}
+                        userPlan={user?.plan || 'premium'}
+                    />
+                )}
+            </div>
         </div>
     );
 }
-
