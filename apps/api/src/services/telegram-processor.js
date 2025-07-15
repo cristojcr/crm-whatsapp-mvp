@@ -368,7 +368,7 @@ class TelegramProcessor {
             const extractedTime = dateTimeInfo.time || dateTimeInfo.suggestedTime;
 
             if (!extractedDate && !extractedTime) {
-                return "❌ Não consegui identificar a data e hora desejada. Por favor, informe quando gostaria de agendar.";
+                return "❌ Não consegui identificar a data e hora desejada. Por favor, informe quando gostaria de agendamento.";
             }
 
             console.log("🗓️ Data extraída:", extractedDate);
@@ -391,23 +391,27 @@ class TelegramProcessor {
             const startDateTime = appointmentDate.toISOString();
             const endDateTime = new Date(appointmentDate.getTime() + 60 * 60 * 1000).toISOString(); // +1 hora
 
-            // 🌐 CHAMAR API DO GOOGLE CALENDAR
+            const requestBody = {
+                title: eventTitle,
+                description: eventDescription,
+                startDateTime: startDateTime,
+                endDateTime: endDateTime,
+                attendees: []
+            };
+
+            console.log("Request body para API do Google Calendar:", JSON.stringify(requestBody, null, 2));
+
             const response = await fetch(`http://localhost:3001/api/calendar/create/${selectedProfessional.id}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
                     // ✅ SEM Authorization - chamada interna
                 },
-                body: JSON.stringify({
-                    title: eventTitle,
-                    description: eventDescription,
-                    startDateTime: startDateTime,
-                    endDateTime: endDateTime,
-                    attendees: []
-                })
+                body: JSON.stringify(requestBody)
             });
 
             const eventResult = await response.json();
+            console.log("Resposta da API do Google Calendar:", JSON.stringify(eventResult, null, 2));
 
             if (!eventResult.success) {
                 console.error("❌ Erro criando evento:", eventResult.error);
