@@ -74,12 +74,27 @@ const isWithinBusinessHours = async (professionalId, companyId, dateTime) => {
 
         console.log(`🕐 Verificando horário comercial: ${timeOfDay} no dia ${dayOfWeek} para profissional ${professionalId}`);
 
-        // Primeiro, verificar se o profissional tem horário individual
+        // Calcular o horário de término do agendamento (padrão: 1 hora)
         const { data: professional } = await supabase
             .from("professionals")
-            .select("has_individual_business_hours")
+            .select("has_individual_business_hours, default_appointment_duration_minutes")
             .eq("id", professionalId)
             .single();
+
+        // Duração padrão: 60 minutos se não especificado
+        const durationMinutes = professional?.default_appointment_duration_minutes || 60;
+        
+        // Calcular o horário de término
+        const startDate = new Date(date);
+        const endDate = new Date(startDate.getTime() + durationMinutes * 60000);
+        const endTimeOfDay = endDate.toLocaleTimeString('pt-BR', { 
+            timeZone: 'America/Sao_Paulo',
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        console.log(`📅 Agendamento: ${timeOfDay} - ${endTimeOfDay} (duração: ${durationMinutes} min)`);
 
         let businessHours = null;
 
@@ -120,15 +135,39 @@ const isWithinBusinessHours = async (professionalId, companyId, dateTime) => {
                 return false;
             }
             
-            // Verificar se está dentro do horário comercial padrão (8h às 18h)
-            if (timeOfDay < "08:00" || timeOfDay > "18:00") {
-                console.log(`❌ Fora do horário padrão: ${timeOfDay} não está entre 08:00 e 18:00`);
+            // Definir horário padrão
+            const defaultStart = "08:00";
+            const defaultEnd = "18:00";
+            const defaultBreakStart = "12:00";
+            const defaultBreakEnd = "13:00";
+            
+            // Verificar se o agendamento começa antes do horário comercial
+            if (timeOfDay < defaultStart) {
+                console.log(`❌ Agendamento começa antes do horário comercial: ${timeOfDay} < ${defaultStart}`);
                 return false;
             }
             
-            // Horário de almoço padrão (12h às 13h)
-            if (timeOfDay >= "12:00" && timeOfDay <= "13:00") {
-                console.log(`❌ Horário de almoço padrão: ${timeOfDay} está entre 12:00 e 13:00`);
+            // Verificar se o agendamento termina após o horário comercial
+            if (endTimeOfDay > defaultEnd) {
+                console.log(`❌ Agendamento termina após o horário comercial: ${endTimeOfDay} > ${defaultEnd}`);
+                return false;
+            }
+            
+            // Verificar se o agendamento começa durante o horário de almoço
+            if (timeOfDay >= defaultBreakStart && timeOfDay < defaultBreakEnd) {
+                console.log(`❌ Agendamento começa durante o horário de almoço: ${timeOfDay} está entre ${defaultBreakStart} e ${defaultBreakEnd}`);
+                return false;
+            }
+            
+            // Verificar se o agendamento termina durante o horário de almoço
+            if (endTimeOfDay > defaultBreakStart && endTimeOfDay <= defaultBreakEnd) {
+                console.log(`❌ Agendamento termina durante o horário de almoço: ${endTimeOfDay} está entre ${defaultBreakStart} e ${defaultBreakEnd}`);
+                return false;
+            }
+            
+            // Verificar se o agendamento engloba o horário de almoço
+            if (timeOfDay < defaultBreakStart && endTimeOfDay > defaultBreakEnd) {
+                console.log(`❌ Agendamento engloba o horário de almoço: ${timeOfDay} - ${endTimeOfDay} engloba ${defaultBreakStart} - ${defaultBreakEnd}`);
                 return false;
             }
             
@@ -136,21 +175,40 @@ const isWithinBusinessHours = async (professionalId, companyId, dateTime) => {
             return true;
         }
 
-        // Verificar se está dentro do horário de funcionamento
-        if (timeOfDay < businessHours.start_time || timeOfDay > businessHours.end_time) {
-            console.log(`❌ Fora do horário: ${timeOfDay} não está entre ${businessHours.start_time} e ${businessHours.end_time}`);
+        // Verificar se o agendamento começa antes do horário comercial
+        if (timeOfDay < businessHours.start_time) {
+            console.log(`❌ Agendamento começa antes do horário comercial: ${timeOfDay} < ${businessHours.start_time}`);
+            return false;
+        }
+        
+        // Verificar se o agendamento termina após o horário comercial
+        if (endTimeOfDay > businessHours.end_time) {
+            console.log(`❌ Agendamento termina após o horário comercial: ${endTimeOfDay} > ${businessHours.end_time}`);
             return false;
         }
 
         // Verificar se está no horário de almoço/pausa
         if (businessHours.break_start_time && businessHours.break_end_time) {
-            if (timeOfDay >= businessHours.break_start_time && timeOfDay <= businessHours.break_end_time) {
-                console.log(`❌ Horário de pausa: ${timeOfDay} está entre ${businessHours.break_start_time} e ${businessHours.break_end_time}`);
+            // Verificar se o agendamento começa durante o horário de almoço
+            if (timeOfDay >= businessHours.break_start_time && timeOfDay < businessHours.break_end_time) {
+                console.log(`❌ Agendamento começa durante o horário de almoço: ${timeOfDay} está entre ${businessHours.break_start_time} e ${businessHours.break_end_time}`);
+                return false;
+            }
+            
+            // Verificar se o agendamento termina durante o horário de almoço
+            if (endTimeOfDay > businessHours.break_start_time && endTimeOfDay <= businessHours.break_end_time) {
+                console.log(`❌ Agendamento termina durante o horário de almoço: ${endTimeOfDay} está entre ${businessHours.break_start_time} e ${businessHours.break_end_time}`);
+                return false;
+            }
+            
+            // Verificar se o agendamento engloba o horário de almoço
+            if (timeOfDay < businessHours.break_start_time && endTimeOfDay > businessHours.break_end_time) {
+                console.log(`❌ Agendamento engloba o horário de almoço: ${timeOfDay} - ${endTimeOfDay} engloba ${businessHours.break_start_time} - ${businessHours.break_end_time}`);
                 return false;
             }
         }
 
-        console.log(`✅ Horário válido: ${timeOfDay} está dentro do horário comercial`);
+        console.log(`✅ Horário válido: ${timeOfDay} - ${endTimeOfDay} está dentro do horário comercial`);
         return true;
     } catch (error) {
         console.error("❌ Erro ao verificar horário comercial:", error);

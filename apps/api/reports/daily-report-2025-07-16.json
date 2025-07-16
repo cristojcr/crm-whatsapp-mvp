@@ -1,7 +1,7 @@
 {
   "period": {
-    "start": "2025-07-15T14:15:22.034Z",
-    "end": "2025-07-16T14:15:22.034Z",
+    "start": "2025-07-15T14:40:53.860Z",
+    "end": "2025-07-16T14:40:53.860Z",
     "duration": "24 hours"
   },
   "summary": {
@@ -10,9 +10,9 @@
     "errorCount": 0,
     "successRate": 100,
     "avgResponseTime": 0,
-    "uptime": 0.00003125,
-    "memoryUsage": 63.82710492873518,
-    "timestamp": "2025-07-16T14:15:22.035Z"
+    "uptime": 0.00002662037037037037,
+    "memoryUsage": 68.10281660146391,
+    "timestamp": "2025-07-16T14:40:53.861Z"
   },
   "requests": {
     "total": 0,
