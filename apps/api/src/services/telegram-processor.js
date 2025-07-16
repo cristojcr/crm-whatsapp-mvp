@@ -433,31 +433,36 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ FUNÇÃO MODIFICADA: Processar agendamento com conversação (SEM assumir horário)
+    // ✅ FUNÇÃO MODIFICADA: Processar agendamento com conversação (CORRIGIDA - SEMPRE PERGUNTA DATA/HORA)
     async handleSchedulingIntentWithConversation(analysis, contact, userId, customerContext, chatId, conversation) {
         try {
             console.log('🗓 Processando agendamento com conversa natural...');
             
             const botConfig = await this.getUserBotConfig(userId);
             
-            // ✅ CORRIGIDO: NÃO assumir que é madrugada, perguntar o horário desejado
+            // ✅ CORRIGIDO: SEMPRE perguntar data/hora quando não especificada
             const dateTimeInfo = analysis.extracted_info || analysis.dateTime || {};
             const extractedDate = dateTimeInfo.date || dateTimeInfo.suggestedDate;
             const extractedTime = dateTimeInfo.time || dateTimeInfo.suggestedTime;
             
-            // Se não tiver data/hora específica, perguntar
+            // Se não tiver data/hora específica, SEMPRE perguntar (não assumir)
             if (!extractedDate || !extractedTime) {
+                console.log('📅 Data/hora não especificada, perguntando ao usuário...');
+                
                 const askDateTimeResponse = await this.conversationEngine.generateNaturalResponse('ask_datetime', customerContext, {
                     name: contact.name
                 }, {
-                    currentTime: this.getCurrentTimeInfo()
+                    currentTime: this.getCurrentTimeInfo(),
+                    reason: 'scheduling_request'
                 });
                 
                 await this.sendConversationalResponseWithTyping(askDateTimeResponse, botConfig.bot_token, chatId, conversation, userId, analysis);
                 return;
             }
             
-            // Verificar horário comercial apenas se tiver data/hora
+            console.log(`📅 Data/hora especificada: ${extractedDate} às ${extractedTime}`);
+            
+            // Verificar horário comercial APENAS para a data/hora especificada pelo usuário
             const isWithinBusinessHours = await this.checkBusinessHours(extractedDate, extractedTime, userId);
             
             if (!isWithinBusinessHours) {
@@ -465,12 +470,16 @@ class TelegramProcessor {
                     name: contact.name
                 }, {
                     requestedTime: `${extractedTime} do dia ${extractedDate}`,
-                    businessHours: 'Segunda a sexta, das 8h às 17h'
+                    businessHours: 'Segunda a sexta, das 8h às 17h',
+                    currentTime: this.getCurrentTimeInfo(),
+                    suggestion: 'Por favor, escolha um horário dentro do nosso funcionamento.'
                 });
                 
                 await this.sendConversationalResponseWithTyping(outOfHoursResponse, botConfig.bot_token, chatId, conversation, userId, analysis);
                 return;
             }
+            
+            console.log('✅ Horário solicitado está dentro do horário comercial, prosseguindo...');
             
             // Verificar se há produtos na análise
             if (analysis.products && analysis.products.length > 0) {
@@ -485,7 +494,9 @@ class TelegramProcessor {
                     const noAvailabilityResponse = await this.conversationEngine.generateNaturalResponse('no_availability', customerContext, {
                         name: contact.name
                     }, {
-                        requestedTime: extractedTime ? `${extractedTime} do dia ${extractedDate}` : 'horário solicitado'
+                        requestedTime: `${extractedTime} do dia ${extractedDate}`,
+                        currentTime: this.getCurrentTimeInfo(),
+                        suggestion: 'Posso sugerir outros horários disponíveis se desejar.'
                     });
                     
                     await this.sendConversationalResponseWithTyping(noAvailabilityResponse, botConfig.bot_token, chatId, conversation, userId, analysis);
@@ -992,30 +1003,179 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ FUNÇÃO AUXILIAR: Verificar horário comercial
+    // ✅ FUNÇÃO AUXILIAR: Verificar horário comercial (CORRIGIDA)
     async checkBusinessHours(date, time, userId) {
+        try {
+            console.log(`🕐 Verificando horário comercial para usuário ${userId}, data: ${date}, hora: ${time}`);
+            
+            // Primeiro, verificar se há configuração de horário comercial global para a empresa
+            const { data: companyBusinessHours, error: companyError } = await supabaseAdmin
+                .from('company_business_hours')
+                .select('*')
+                .eq('company_id', userId) // Assumindo que userId é o company_id
+                .eq('is_active', true);
+
+            if (companyError) {
+                console.error('❌ Erro buscando horário comercial da empresa:', companyError);
+            }
+
+            // Se não encontrar horário da empresa, verificar nas configurações do usuário
+            if (!companyBusinessHours || companyBusinessHours.length === 0) {
+                console.log('⚠️ Nenhuma configuração de horário comercial da empresa encontrada, verificando user_settings...');
+                
+                const { data: userSettings, error: userError } = await supabaseAdmin
+                    .from('user_settings')
+                    .select('business_hours_start, business_hours_end, business_days')
+                    .eq('user_id', userId)
+                    .single();
+
+                if (userError || !userSettings) {
+                    console.error('❌ Nenhuma configuração de horário comercial encontrada:', userError);
+                    // Fallback: assumir horário comercial padrão (8h às 17h, segunda a sexta)
+                    return this.checkDefaultBusinessHours(date, time);
+                }
+
+                return this.checkUserBusinessHours(date, time, userSettings);
+            }
+
+            // Verificar horário comercial da empresa
+            return this.checkCompanyBusinessHours(date, time, companyBusinessHours);
+            
+        } catch (error) {
+            console.error('❌ Erro verificando horário comercial:', error);
+            // Em caso de erro, assumir horário comercial padrão
+            return this.checkDefaultBusinessHours(date, time);
+        }
+    }
+
+    // ✅ NOVA FUNÇÃO: Verificar horário comercial padrão (fallback)
+    checkDefaultBusinessHours(date, time) {
         try {
             const [year, month, day] = date.split("-").map(Number);
             const [hours, minutes] = time.split(":").map(Number);
-            const appointmentDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
-            appointmentDate.setUTCHours(appointmentDate.getUTCHours() - 3);
+            const appointmentDate = new Date(year, month - 1, day, hours, minutes);
             
-            const response = await fetch(`http://localhost:3001/api/calendar/check-business-hours/${userId}`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    startDateTime: appointmentDate.toISOString()
-                })
-            });
+            // Verificar se é dia útil (segunda a sexta = 1 a 5)
+            const dayOfWeek = appointmentDate.getDay();
+            if (dayOfWeek === 0 || dayOfWeek === 6) { // Domingo ou sábado
+                console.log('❌ Fora do horário: fim de semana');
+                return false;
+            }
             
-            if (!response.ok) return false;
+            // Verificar se está dentro do horário (8h às 17h)
+            if (hours < 8 || hours >= 17) {
+                console.log(`❌ Fora do horário: ${hours}h não está entre 8h e 17h`);
+                return false;
+            }
             
-            const result = await response.json();
-            return result.success && result.within_business_hours;
+            console.log('✅ Dentro do horário comercial padrão');
+            return true;
+            
         } catch (error) {
-            console.error('❌ Erro verificando horário comercial:', error);
+            console.error('❌ Erro verificando horário padrão:', error);
+            return false;
+        }
+    }
+
+    // ✅ NOVA FUNÇÃO: Verificar horário comercial do usuário
+    checkUserBusinessHours(date, time, userSettings) {
+        try {
+            const [year, month, day] = date.split("-").map(Number);
+            const [hours, minutes] = time.split(":").map(Number);
+            const appointmentDate = new Date(year, month - 1, day, hours, minutes);
+            
+            // Verificar dia da semana
+            const dayOfWeek = appointmentDate.getDay();
+            const businessDays = userSettings.business_days || [1, 2, 3, 4, 5]; // Segunda a sexta por padrão
+            
+            if (!businessDays.includes(dayOfWeek)) {
+                console.log(`❌ Fora do horário: dia ${dayOfWeek} não está nos dias úteis`);
+                return false;
+            }
+            
+            // Verificar horário
+            const startTime = userSettings.business_hours_start || '08:00:00';
+            const endTime = userSettings.business_hours_end || '17:00:00';
+            
+            const [startHour, startMin] = startTime.split(':').map(Number);
+            const [endHour, endMin] = endTime.split(':').map(Number);
+            
+            const appointmentMinutes = hours * 60 + minutes;
+            const startMinutes = startHour * 60 + startMin;
+            const endMinutes = endHour * 60 + endMin;
+            
+            if (appointmentMinutes < startMinutes || appointmentMinutes >= endMinutes) {
+                console.log(`❌ Fora do horário: ${hours}:${minutes} não está entre ${startTime} e ${endTime}`);
+                return false;
+            }
+            
+            console.log('✅ Dentro do horário comercial do usuário');
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Erro verificando horário do usuário:', error);
+            return false;
+        }
+    }
+
+    // ✅ NOVA FUNÇÃO: Verificar horário comercial da empresa
+    checkCompanyBusinessHours(date, time, companyBusinessHours) {
+        try {
+            const [year, month, day] = date.split("-").map(Number);
+            const [hours, minutes] = time.split(":").map(Number);
+            const appointmentDate = new Date(year, month - 1, day, hours, minutes);
+            
+            // Verificar dia da semana (0 = domingo, 1 = segunda, etc.)
+            const dayOfWeek = appointmentDate.getDay();
+            
+            // Buscar configuração para este dia da semana
+            const dayConfig = companyBusinessHours.find(config => config.day_of_week === dayOfWeek);
+            
+            if (!dayConfig) {
+                console.log(`❌ Fora do horário: sem configuração para o dia ${dayOfWeek}`);
+                return false;
+            }
+            
+            // Verificar horário
+            const startTime = dayConfig.start_time;
+            const endTime = dayConfig.end_time;
+            
+            if (!startTime || !endTime) {
+                console.log(`❌ Fora do horário: horários não configurados para o dia ${dayOfWeek}`);
+                return false;
+            }
+            
+            const [startHour, startMin] = startTime.split(':').map(Number);
+            const [endHour, endMin] = endTime.split(':').map(Number);
+            
+            const appointmentMinutes = hours * 60 + minutes;
+            const startMinutes = startHour * 60 + startMin;
+            const endMinutes = endHour * 60 + endMin;
+            
+            // Verificar intervalo de almoço se existir
+            if (dayConfig.break_start_time && dayConfig.break_end_time) {
+                const [breakStartHour, breakStartMin] = dayConfig.break_start_time.split(':').map(Number);
+                const [breakEndHour, breakEndMin] = dayConfig.break_end_time.split(':').map(Number);
+                
+                const breakStartMinutes = breakStartHour * 60 + breakStartMin;
+                const breakEndMinutes = breakEndHour * 60 + breakEndMin;
+                
+                if (appointmentMinutes >= breakStartMinutes && appointmentMinutes < breakEndMinutes) {
+                    console.log(`❌ Fora do horário: ${hours}:${minutes} está no intervalo de almoço`);
+                    return false;
+                }
+            }
+            
+            if (appointmentMinutes < startMinutes || appointmentMinutes >= endMinutes) {
+                console.log(`❌ Fora do horário: ${hours}:${minutes} não está entre ${startTime} e ${endTime}`);
+                return false;
+            }
+            
+            console.log('✅ Dentro do horário comercial da empresa');
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Erro verificando horário da empresa:', error);
             return false;
         }
     }
