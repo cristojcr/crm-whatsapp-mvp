@@ -7,7 +7,6 @@ const { checkCompliance } = require('../middleware/compliance-middleware');
 router.use(express.json({ limit: '50mb' }));
 router.use(express.urlencoded({ extended: true }));
 
-const TelegramProcessor = require('../services/telegram-processor');
 
 // Rota raiz para status do Telegram - ADICIONAR AQUI
 router.get('/', (req, res) => {
