@@ -1,7 +1,7 @@
 {
   "period": {
-    "start": "2025-07-15T21:26:02.823Z",
-    "end": "2025-07-16T21:26:02.823Z",
+    "start": "2025-07-15T22:11:56.758Z",
+    "end": "2025-07-16T22:11:56.758Z",
     "duration": "24 hours"
   },
   "summary": {
@@ -10,9 +10,9 @@
     "errorCount": 0,
     "successRate": 100,
     "avgResponseTime": 0,
-    "uptime": 0.00005671296296296296,
-    "memoryUsage": 45.17853795430487,
-    "timestamp": "2025-07-16T21:26:02.824Z"
+    "uptime": 0.00006944444444444444,
+    "memoryUsage": 46.39424993797846,
+    "timestamp": "2025-07-16T22:11:56.759Z"
   },
   "requests": {
     "total": 0,
@@ -28,5 +28,13 @@
   },
   "performance": {},
   "alerts": [],
-  "recommendations": []
+  "recommendations": [
+    {
+      "type": "memory",
+      "priority": "medium",
+      "title": "Uso alto de memória",
+      "description": "Uso atual: 80.4%",
+      "action": "Monitorar vazamentos de memória e otimizar uso"
+    }
+  ]
 }

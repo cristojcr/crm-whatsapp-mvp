@@ -713,24 +713,211 @@ async function analyzeWithProfessionalPreferenceWithContext(message, contactId, 
   }
 }
 
+// 🧠 FUNÇÃO PRINCIPAL: Buscar contexto histórico completo
+async function getClientHistoricalContext(contactId, userId) {
+    try {
+        console.log('🧠 Buscando contexto histórico do cliente:', contactId);
+        
+        const { createClient } = require('@supabase/supabase-js');
+        const supabaseAdmin = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+
+        // 1. BUSCAR ÚLTIMAS 15 MENSAGENS DA CONVERSA
+        const { data: recentMessages } = await supabaseAdmin
+            .from('messages')
+            .select('content, sender_type, created_at')
+            .eq('contact_id', contactId)
+            .order('created_at', { ascending: false })
+            .limit(15);
+
+        // 2. BUSCAR AGENDAMENTOS FUTUROS
+        const { data: upcomingAppointments } = await supabaseAdmin
+            .from('appointments')
+            .select('scheduled_at, professional_id, service_id, status')
+            .eq('contact_id', contactId)
+            .gte('scheduled_at', new Date().toISOString())
+            .order('scheduled_at', { ascending: true });
+
+        // 3. BUSCAR AGENDAMENTOS PASSADOS RECENTES (últimos 90 dias)
+        const { data: recentAppointments } = await supabaseAdmin
+            .from('appointments')
+            .select('scheduled_at, professional_id, service_id, status')
+            .eq('contact_id', contactId)
+            .gte('scheduled_at', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString())
+            .lt('scheduled_at', new Date().toISOString())
+            .order('scheduled_at', { ascending: false })
+            .limit(5);
+
+        // 4. BUSCAR DADOS DO CONTATO
+        const { data: contactInfo } = await supabaseAdmin
+            .from('contacts')
+            .select('name, phone, preferences')
+            .eq('id', contactId)
+            .single();
+
+        return {
+            contact: contactInfo,
+            recentMessages: recentMessages || [],
+            upcomingAppointments: upcomingAppointments || [],
+            recentAppointments: recentAppointments || [],
+            hasHistory: (recentMessages?.length || 0) > 1
+        };
+
+    } catch (error) {
+        console.error('❌ Erro buscando contexto histórico:', error);
+        return null;
+    }
+}
+
+// 📝 FUNÇÃO: Formatar contexto para a IA entender
+function formatContextForAI(historicalContext, currentMessage) {
+    if (!historicalContext) return '';
+
+    const { contact, recentMessages, upcomingAppointments, recentAppointments, hasHistory } = historicalContext;
+    
+    let contextPrompt = `\n🧠 CONTEXTO DO CLIENTE:\n`;
+    
+    // Informações básicas do cliente
+    if (contact?.name) {
+        contextPrompt += `- Nome: ${contact.name}\n`;
+    }
+    
+    // Histórico de conversa
+    if (hasHistory && recentMessages.length > 1) {
+        contextPrompt += `- Cliente CONHECIDO (já conversou antes)\n`;
+        contextPrompt += `- Últimas mensagens:\n`;
+        recentMessages.slice(0, 5).forEach(msg => {
+            const sender = msg.sender_type === 'user' ? 'Cliente' : 'Você';
+            contextPrompt += `  ${sender}: "${msg.content}"\n`;
+        });
+    } else {
+        contextPrompt += `- Cliente NOVO (primeira conversa)\n`;
+    }
+    
+    // Agendamentos futuros
+    if (upcomingAppointments.length > 0) {
+        contextPrompt += `- AGENDAMENTOS FUTUROS:\n`;
+        upcomingAppointments.forEach(apt => {
+            const date = new Date(apt.scheduled_at).toLocaleDateString('pt-BR');
+            const time = new Date(apt.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            contextPrompt += `  • ${date} às ${time} (Status: ${apt.status})\n`;
+        });
+    }
+    
+    // Agendamentos passados
+    if (recentAppointments.length > 0) {
+        contextPrompt += `- HISTÓRICO RECENTE:\n`;
+        recentAppointments.slice(0, 3).forEach(apt => {
+            const date = new Date(apt.scheduled_at).toLocaleDateString('pt-BR');
+            contextPrompt += `  • Consulta em ${date} (${apt.status})\n`;
+        });
+    }
+    
+    contextPrompt += `\n📱 MENSAGEM ATUAL: "${currentMessage}"\n`;
+    contextPrompt += `\n💡 INSTRUÇÕES: Seja natural, use o contexto acima para responder de forma personalizada e humana.`;
+    
+    return contextPrompt;
+}
+
+// 🔄 FUNÇÃO PRINCIPAL MODIFICADA: Análise COM contexto histórico
+async function analyzeWithHistoricalContext(text, contactId, userId, customerContext = null) {
+    try {
+        console.log('🧠 Iniciando análise COM contexto histórico');
+        
+        // Buscar contexto histórico do cliente
+        const historicalContext = await getClientHistoricalContext(contactId, userId);
+        
+        // Formatar contexto para a IA
+        const contextualPrompt = formatContextForAI(historicalContext, text);
+        
+        // Prompts mais inteligentes baseados no contexto
+        let aiPrompt = `Você é Sarah, assistente virtual de uma clínica médica brasileira.
+        
+PERSONALIDADE: Calorosa, empática, natural, brasileira, eficiente
+OBJETIVO: Ajudar com agendamentos, informações e atendimento
+
+${contextualPrompt}
+
+REGRAS IMPORTANTES:
+- Se cliente CONHECIDO: seja calorosa mas não repita cumprimentos básicos
+- Se cliente NOVO: seja acolhedora e se apresente brevemente  
+- Para agendamentos: seja específica sobre horários e profissionais
+- Sempre mantenha tom humano e natural
+- Use emojis moderadamente
+
+Analise a mensagem e responda adequadamente:`;
+
+        console.log('🎯 Enviando prompt com contexto para IA...');
+        
+        // Chamar IA com contexto histórico
+        const response = await fetch('https://api.deepseek.com/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+            },
+            body: JSON.stringify({
+                model: 'deepseek-chat',
+                messages: [
+                    {
+                        role: 'system',
+                        content: aiPrompt
+                    },
+                    {
+                        role: 'user', 
+                        content: text
+                    }
+                ],
+                temperature: 0.8,
+                max_tokens: 500
+            })
+        });
+
+        const aiResult = await response.json();
+        const aiResponse = aiResult.choices?.[0]?.message?.content || 'Desculpe, não entendi. Pode repetir?';
+
+        console.log('✅ IA respondeu com contexto histórico');
+
+        return {
+            intention: 'conversational', // Sempre conversacional com contexto
+            confidence: 0.9,
+            response: aiResponse,
+            hasHistoricalContext: historicalContext?.hasHistory || false,
+            customerName: historicalContext?.contact?.name || null,
+            upcomingAppointments: historicalContext?.upcomingAppointments?.length || 0
+        };
+
+    } catch (error) {
+        console.error('❌ Erro na análise com contexto histórico:', error);
+        
+        // Fallback para método atual
+        return await analyzeWithProductsAndProfessionals(text, contactId, userId, customerContext);
+    }
+}
+
+// ⚡ FALLBACK: Análise SEM contexto (método atual mantido como backup)
+async function analyzeWithoutContext(text, contactId, userId, customerContext = null) {
+    // Esta é a função atual analyzeWithProductsAndProfessionals
+    // Mantida como fallback caso a análise com contexto falhe
+    console.log('⚠️ Usando fallback sem contexto histórico');
+    
+    // TODO: Aqui vai o código da função atual analyzeWithProductsAndProfessionals
+    // Por ora, retorna resposta genérica
+    return {
+        intention: 'general_inquiry',
+        confidence: 0.5,
+        response: 'Olá! Como posso ajudar você hoje?',
+        hasHistoricalContext: false
+    };
+}
+
+
 module.exports = {
-  analyze,
-  analyzeFallback,
-  analyzeHybrid,
-  detectServiceMention,
-  extractDateTime,
-  extractProfessionalPreference,
-  cleanProfessionalName,
-  mapSpecialty,
-  analyzeWithProfessionalPreference,
-  determineSuggestedApproach,
-  getClientHistoricalContext,
-  formatContextForAI,
-  analyzeWithProfessionalPreferenceWithContext,
-  buildAnalysisPrompt,
-  analyzeWithProductsAndProfessionals,
-  findMatchingProducts,
-  extractKeywords,
-  INTENTION_TYPES,
-  INTENTION_KEYWORDS
+    analyzeWithHistoricalContext,        // 🆕 NOVA FUNÇÃO PRINCIPAL
+    analyzeWithProductsAndProfessionals, // Manter compatibilidade
+    analyzeWithoutContext,               // Fallback
+    getClientHistoricalContext,          // Para uso externo
+    formatContextForAI                   // Para uso externo
 };

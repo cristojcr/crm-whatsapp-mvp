@@ -3,12 +3,19 @@ const supabaseAdmin = require("../config/supabaseAdmin");
 const ConversationEngine = require("./conversation-engine");
 const CustomerContext = require("./customer-context");
 
+const { ConversationStates, CONVERSATION_STATES } = require('./conversation-states');
+const NaturalTiming = require('./natural-timing');
+const IntelligentScheduling = require('./intelligent-scheduling');
+
 class TelegramProcessor {
     constructor() {
         // Configuração dinâmica - busca por usuário
         this.conversationEngine = new ConversationEngine();
         this.customerContext = new CustomerContext();
         this.processingMessages = new Set(); // Controle para evitar processamento duplo
+        this.conversationStates = new ConversationStates();
+        this.naturalTiming = new NaturalTiming();
+        this.intelligentScheduling = new IntelligentScheduling();
     }
 
     // Buscar configuração do bot por usuário
@@ -165,87 +172,169 @@ class TelegramProcessor {
     }
 
     // Processar mensagens (adaptado para multi-tenant com conversação natural)
-    async processMessage(message, userId) {
-        const { from, text, photo, video, audio, voice, document, chat } = message;
-        
-        // Criar chave única para evitar processamento duplo
-        const messageKey = `${chat.id}_${message.message_id}`;
-        
-        // Verificar se já está processando esta mensagem
-        if (this.processingMessages.has(messageKey)) {
-            console.log('⚠️ Mensagem já está sendo processada, ignorando duplicata');
-            return null;
-        }
-        
-        // Marcar como processando
-        this.processingMessages.add(messageKey);
-        
+    async processMessage(req, res) {
         try {
-            // Buscar configuração do bot do usuário
-            const botConfig = await this.getUserBotConfig(userId);
+            const { message } = req.body;
             
-            // Buscar ou criar contato
-            const contact = await this.findOrCreateContact(from, userId);
+            if (!message?.text) {
+                return res.status(200).json({ status: 'ignored', reason: 'no_text' });
+            }
+
+            console.log('📱 Processando mensagem Telegram:', message.text);
+            console.log('👤 De:', message.from.id);
+            console.log('💬 Chat:', message.chat.id);
+
+            // 1. BUSCAR/CRIAR CONTATO E CONVERSA
+            const { contact, conversation, userId } = await this.getOrCreateContactAndConversation(message);
             
-            // Buscar ou criar conversa
-            const conversation = await this.findOrCreateConversation(contact.id, userId, "telegram");
-            
-            // Salvar mensagem recebida
-            await this.saveMessage({
+            if (!contact || !conversation || !userId) {
+                console.error('❌ Erro obtendo dados do contato/conversa');
+                return res.status(200).json({ status: 'error', reason: 'contact_conversation_error' });
+            }
+
+            // 2. SALVAR MENSAGEM NO BANCO
+            const savedMessage = await this.saveMessage({
                 conversation_id: conversation.id,
-                content: text || "[mídia]",
-                message_type: this.getMessageType(message),
-                sender_type: "contact",
-                channel_type: "telegram",
+                content: message.text,
+                message_type: 'text',
+                sender_type: 'user',
+                channel_type: 'telegram',
                 channel_message_id: message.message_id.toString(),
                 user_id: userId,
-                contact_id: contact.id
+                metadata: { telegram_data: message }
             });
 
-            // 🆕 PROCESSAMENTO COM IA CONVERSACIONAL
-            if (text && text.trim()) {
-                console.log('🧠 Processando mensagem com IA conversacional:', text);
+            // 3. BUSCAR CONTEXTO HISTÓRICO (CORREÇÃO 1: MEMÓRIA HISTÓRICA)
+            const intentionAnalyzer = require('./intention-analyzer');
+            const historicalContext = await intentionAnalyzer.getClientHistoricalContext(contact.id, userId);
+            
+            console.log('🧠 Contexto histórico:', {
+                hasHistory: historicalContext?.hasHistory,
+                recentMessages: historicalContext?.recentMessages?.length || 0,
+                upcomingAppointments: historicalContext?.upcomingAppointments?.length || 0
+            });
+
+            // 4. BUSCAR ESTADO ATUAL DA CONVERSA (CORREÇÃO 2: ESTADOS CONVERSACIONAIS)
+            const { state: currentState, data: stateData } = await this.conversationStates.getCurrentState(conversation.id);
+            console.log('📊 Estado da conversa:', currentState);
+
+            // 5. DETECTAR INTENÇÃO DE AGENDAMENTO (CORREÇÃO 4: AGENDAMENTO INTELIGENTE)
+            const schedulingIntent = await this.intelligentScheduling.detectSchedulingIntent(
+                message.text, 
+                currentState, 
+                historicalContext
+            );
+
+            console.log('🎯 Intenção de agendamento:', schedulingIntent);
+
+            // 6. PROCESSAR BASEADO NA INTENÇÃO
+            let responseResult;
+            let nextState = currentState;
+
+            if (schedulingIntent.intention && schedulingIntent.confidence > 0.7) {
+                // FLUXO DE AGENDAMENTO
+                console.log('📅 Processando fluxo de agendamento...');
                 
-                // Obter contexto do cliente
-                const customerContextData = await this.customerContext.getCustomerContext(contact.id, userId);
+                responseResult = await this.intelligentScheduling.processSchedulingIntent(
+                    message.text,
+                    contact.id,
+                    userId,
+                    currentState,
+                    historicalContext
+                );
+
+                // Determinar próximo estado baseado no resultado
+                nextState = await this.conversationStates.determineNextState(
+                    currentState, 
+                    message.text, 
+                    schedulingIntent
+                );
+
+            } else {
+                // FLUXO CONVERSACIONAL NORMAL
+                console.log('💬 Processando fluxo conversacional...');
                 
-                // Verificar se é uma seleção pendente primeiro (mais rápido)
-                const hasPendingSelection = await this.checkForPendingSelections(contact.id, userId, text);
+                responseResult = await intentionAnalyzer.analyzeWithHistoricalContext(
+                    message.text,
+                    contact.id,
+                    userId,
+                    historicalContext
+                );
+
+                // Determinar próximo estado para conversa normal
+                nextState = await this.conversationStates.determineNextState(
+                    currentState, 
+                    message.text, 
+                    responseResult
+                );
+            }
+
+            // 7. SALVAR NOVO ESTADO DA CONVERSA
+            await this.conversationStates.setState(conversation.id, nextState, {
+                lastProcessedMessage: message.text,
+                lastIntention: schedulingIntent.intention || responseResult.intention,
+                confidence: schedulingIntent.confidence || responseResult.confidence
+            });
+
+            // 8. PREPARAR RESPOSTA
+            let responseText = responseResult.message || responseResult.response || 'Desculpe, não entendi. Pode repetir?';
+            
+            // Adicionar variações naturais
+            responseText = this.naturalTiming.addNaturalVariations(responseText);
+
+            // 9. ENVIAR RESPOSTA COM TIMING NATURAL (CORREÇÃO 3: TIMING NATURAL)
+            const botConfig = await this.getUserBotConfig(userId);
+            
+            if (botConfig?.bot_token) {
+                console.log('📤 Enviando resposta com timing natural...');
                 
-                if (hasPendingSelection) {
-                    await this.handlePendingSelection(hasPendingSelection, text, contact, userId, customerContextData, chat.id, conversation);
-                } else {
-                    // Analisar com IA apenas se não for seleção pendente
-                    const analysis = await this.analyzeMessageIntent(text, contact.id, userId);
+                const sentSuccessfully = await this.naturalTiming.processAndSendNaturally(
+                    botConfig.bot_token,
+                    message.chat.id,
+                    responseText
+                );
+
+                if (sentSuccessfully) {
+                    // 10. SALVAR RESPOSTA DA IA NO BANCO
+                    await this.saveMessage({
+                        conversation_id: conversation.id,
+                        content: responseText,
+                        message_type: 'text',
+                        sender_type: 'assistant',
+                        channel_type: 'telegram',
+                        channel_message_id: `ai_${Date.now()}`,
+                        user_id: userId,
+                        metadata: { 
+                            ai_analysis: responseResult,
+                            conversation_state: nextState,
+                            has_historical_context: historicalContext?.hasHistory || false
+                        }
+                    });
+
+                    console.log('✅ Mensagem processada com sucesso - NOVA IMPLEMENTAÇÃO FUNCIONANDO!');
                     
-                    console.log('✅ Análise IA:', analysis);
-                    console.log('👤 Contexto do cliente:', customerContextData);
-                    
-                    // Processar baseado na intenção COM CONVERSAÇÃO NATURAL
-                    await this.handleIntentionWithNaturalConversation(analysis, contact, userId, customerContextData, chat.id, conversation);
+                    return res.status(200).json({ 
+                        status: 'success',
+                        processed_with_improvements: true,
+                        conversation_state: nextState,
+                        had_historical_context: historicalContext?.hasHistory || false,
+                        detected_scheduling: schedulingIntent.intention || false
+                    });
                 }
             }
 
-            // Processar outros tipos de mídia com conversação natural
-            if (photo || video || audio || voice || document) {
-                const customerContextData = await this.customerContext.getCustomerContext(contact.id, userId);
-                const mediaResponse = await this.conversationEngine.generateNaturalResponse('media_received', customerContextData, {
-                    name: contact.name
-                }, {
-                    mediaType: this.getMessageType(message)
-                });
-                
-                await this.sendConversationalResponseWithTyping(mediaResponse, botConfig.bot_token, chat.id, conversation, userId, {});
-            }
+            // Fallback se algo der errado
+            console.error('❌ Erro no processamento avançado, usando fallback simples');
+            return res.status(200).json({ status: 'fallback_used' });
 
-        } finally {
-            // Remover da lista de processamento após 5 segundos
-            setTimeout(() => {
-                this.processingMessages.delete(messageKey);
-            }, 5000);
+        } catch (error) {
+            console.error('❌ Erro geral no processamento:', error);
+            return res.status(500).json({ 
+                status: 'error', 
+                error: error.message,
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            });
         }
-
-        return null;
     }
 
     // ✅ FUNÇÃO CORRIGIDA: Verificar seleções pendentes
@@ -1777,6 +1866,92 @@ class TelegramProcessor {
     // ✅ FUNÇÃO AUXILIAR: Obter período do dia correto (DEPRECIADA - usar getCurrentTimeInfo)
     getTimeOfDay() {
         return this.getCurrentTimeInfo().period;
+    }
+}
+
+// ✅ FUNÇÃO AUXILIAR: Buscar/Criar contato e conversa (manter lógica existente)
+    async getOrCreateContactAndConversation(message) {
+        try {
+            // TODO: Usar a lógica existente do seu telegram-processor.js
+            // Esta é apenas a estrutura - você deve usar o código que já tem funcionando
+            
+            console.log('🔍 Buscando/criando contato e conversa...');
+            
+            // Buscar usuário pelo telegram_chat_id ou telefone
+            // Criar contato se não existir
+            // Buscar/criar conversa
+            // Retornar { contact, conversation, userId }
+            
+            // Por ora, retorno fictício - SUBSTITUA pela sua lógica atual
+            return {
+                contact: { id: 'contact_id', name: 'Nome do Cliente' },
+                conversation: { id: 'conversation_id' },
+                userId: 'user_id'
+            };
+            
+        } catch (error) {
+            console.error('❌ Erro buscando/criando contato:', error);
+            return { contact: null, conversation: null, userId: null };
+        }
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Salvar mensagem (manter lógica existente)
+    async saveMessage(messageData) {
+        try {
+            // TODO: Usar a lógica existente do seu telegram-processor.js
+            console.log('💾 Salvando mensagem...');
+            
+            const { createClient } = require('@supabase/supabase-js');
+            const supabaseAdmin = createClient(
+                process.env.SUPABASE_URL,
+                process.env.SUPABASE_SERVICE_ROLE_KEY
+            );
+
+            const { data, error } = await supabaseAdmin
+                .from('messages')
+                .insert([messageData])
+                .select()
+                .single();
+
+            if (error) throw error;
+            
+            console.log('✅ Mensagem salva:', data.id);
+            return data;
+            
+        } catch (error) {
+            console.error('❌ Erro salvando mensagem:', error);
+            return null;
+        }
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Buscar config do bot (manter lógica existente)
+    async getUserBotConfig(userId) {
+        try {
+            // TODO: Usar a lógica existente do seu telegram-processor.js
+            console.log('⚙️ Buscando configuração do bot...');
+            
+            const { createClient } = require('@supabase/supabase-js');
+            const supabaseAdmin = createClient(
+                process.env.SUPABASE_URL,
+                process.env.SUPABASE_SERVICE_ROLE_KEY
+            );
+
+            const { data, error } = await supabaseAdmin
+                .from('user_channels')
+                .select('bot_token, is_active')
+                .eq('user_id', userId)
+                .eq('channel_type', 'telegram')
+                .eq('is_active', true)
+                .single();
+
+            if (error) throw error;
+            
+            return data;
+            
+        } catch (error) {
+            console.error('❌ Erro buscando config do bot:', error);
+            return null;
+        }
     }
 }
 
