@@ -248,7 +248,7 @@ class TelegramProcessor {
         return null;
     }
 
-    // ✅ NOVA FUNÇÃO: Verificar seleções pendentes de forma otimizada
+    // ✅ FUNÇÃO CORRIGIDA: Verificar seleções pendentes
     async checkForPendingSelections(contactId, userId, text) {
         try {
             // Verificar se o texto parece ser uma seleção numérica
@@ -256,7 +256,12 @@ class TelegramProcessor {
                 return null;
             }
 
-            // Buscar qualquer seleção pendente
+            // ⚠️ TEMPORÁRIO: Desabilitado até a tabela pending_appointments ser criada
+            console.log('⚠️ Verificação de seleções pendentes temporariamente desabilitada');
+            return null;
+
+            // TODO: Reativar após executar create_pending_appointments_table_complete.sql
+            /*
             const { data: pending, error } = await supabaseAdmin
                 .from('pending_appointments')
                 .select('*')
@@ -273,6 +278,7 @@ class TelegramProcessor {
             }
 
             return pending;
+            */
         } catch (error) {
             console.error('❌ Erro em checkForPendingSelections:', error);
             return null;
@@ -408,11 +414,15 @@ class TelegramProcessor {
             
             const botConfig = await this.getUserBotConfig(userId);
             
+            // ✅ CORRIGIDO: Obter horário atual correto
+            const currentTime = this.getCurrentTimeInfo();
+            
             // Gerar resposta natural para cumprimento
             const greetingResponse = await this.conversationEngine.generateNaturalResponse('greeting', customerContext, {
                 name: contact.name
             }, {
-                timeOfDay: this.getTimeOfDay(),
+                timeOfDay: currentTime.period,
+                currentHour: currentTime.hour,
                 isReturningCustomer: customerContext.isReturningCustomer
             });
             
@@ -423,32 +433,43 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ FUNÇÃO MODIFICADA: Processar agendamento com conversação (resposta única)
+    // ✅ FUNÇÃO MODIFICADA: Processar agendamento com conversação (SEM assumir horário)
     async handleSchedulingIntentWithConversation(analysis, contact, userId, customerContext, chatId, conversation) {
         try {
             console.log('🗓 Processando agendamento com conversa natural...');
             
             const botConfig = await this.getUserBotConfig(userId);
             
-            // Verificar horário comercial primeiro
+            // ✅ CORRIGIDO: NÃO assumir que é madrugada, perguntar o horário desejado
             const dateTimeInfo = analysis.extracted_info || analysis.dateTime || {};
             const extractedDate = dateTimeInfo.date || dateTimeInfo.suggestedDate;
             const extractedTime = dateTimeInfo.time || dateTimeInfo.suggestedTime;
             
-            if (extractedDate && extractedTime) {
-                const isWithinBusinessHours = await this.checkBusinessHours(extractedDate, extractedTime, userId);
+            // Se não tiver data/hora específica, perguntar
+            if (!extractedDate || !extractedTime) {
+                const askDateTimeResponse = await this.conversationEngine.generateNaturalResponse('ask_datetime', customerContext, {
+                    name: contact.name
+                }, {
+                    currentTime: this.getCurrentTimeInfo()
+                });
                 
-                if (!isWithinBusinessHours) {
-                    const outOfHoursResponse = await this.conversationEngine.generateNaturalResponse('out_of_hours', customerContext, {
-                        name: contact.name
-                    }, {
-                        requestedTime: `${extractedTime} do dia ${extractedDate}`,
-                        businessHours: 'Segunda a sexta, das 8h às 17h'
-                    });
-                    
-                    await this.sendConversationalResponseWithTyping(outOfHoursResponse, botConfig.bot_token, chatId, conversation, userId, analysis);
-                    return;
-                }
+                await this.sendConversationalResponseWithTyping(askDateTimeResponse, botConfig.bot_token, chatId, conversation, userId, analysis);
+                return;
+            }
+            
+            // Verificar horário comercial apenas se tiver data/hora
+            const isWithinBusinessHours = await this.checkBusinessHours(extractedDate, extractedTime, userId);
+            
+            if (!isWithinBusinessHours) {
+                const outOfHoursResponse = await this.conversationEngine.generateNaturalResponse('out_of_hours', customerContext, {
+                    name: contact.name
+                }, {
+                    requestedTime: `${extractedTime} do dia ${extractedDate}`,
+                    businessHours: 'Segunda a sexta, das 8h às 17h'
+                });
+                
+                await this.sendConversationalResponseWithTyping(outOfHoursResponse, botConfig.bot_token, chatId, conversation, userId, analysis);
+                return;
             }
             
             // Verificar se há produtos na análise
@@ -474,6 +495,31 @@ class TelegramProcessor {
         } catch (error) {
             console.error('❌ Erro no agendamento com conversação:', error);
         }
+    }
+
+    // ✅ NOVA FUNÇÃO: Obter informações corretas de horário atual
+    getCurrentTimeInfo() {
+        const now = new Date();
+        const hour = now.getHours();
+        const minute = now.getMinutes();
+        
+        let period;
+        if (hour >= 5 && hour < 12) {
+            period = 'manhã';
+        } else if (hour >= 12 && hour < 18) {
+            period = 'tarde';
+        } else {
+            period = 'noite';
+        }
+        
+        return {
+            hour: hour,
+            minute: minute,
+            period: period,
+            fullTime: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
+            date: now.toLocaleDateString('pt-BR'),
+            timestamp: now.toISOString()
+        };
     }
 
     // ✅ NOVA FUNÇÃO: Processar consultas com conversação
@@ -928,14 +974,6 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ FUNÇÃO AUXILIAR: Obter período do dia correto
-    getTimeOfDay() {
-        const hour = new Date().getHours();
-        if (hour < 12) return 'manhã';
-        if (hour < 18) return 'tarde';
-        return 'noite';
-    }
-
     // ✅ FUNÇÃO AUXILIAR: Salvar resposta conversacional
     async saveConversationalResponse(conversationId, content, userId, analysis) {
         try {
@@ -1008,6 +1046,12 @@ class TelegramProcessor {
     // ✅ FUNÇÃO AUXILIAR: Salvar reagendamento pendente
     async savePendingRescheduling(contactId, userId, appointments, analysis) {
         try {
+            // ⚠️ TEMPORÁRIO: Desabilitado até a tabela pending_appointments ser criada
+            console.log('⚠️ savePendingRescheduling temporariamente desabilitado');
+            return;
+
+            // TODO: Reativar após executar create_pending_appointments_table_complete.sql
+            /*
             await supabaseAdmin
                 .from('pending_appointments')
                 .upsert({
@@ -1019,6 +1063,7 @@ class TelegramProcessor {
                     expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
                     created_at: new Date().toISOString()
                 });
+            */
         } catch (error) {
             console.error('❌ Erro salvando reagendamento pendente:', error);
         }
@@ -1027,6 +1072,12 @@ class TelegramProcessor {
     // ✅ FUNÇÃO AUXILIAR: Salvar cancelamento pendente
     async savePendingCancellation(contactId, userId, appointments, analysis) {
         try {
+            // ⚠️ TEMPORÁRIO: Desabilitado até a tabela pending_appointments ser criada
+            console.log('⚠️ savePendingCancellation temporariamente desabilitado');
+            return;
+
+            // TODO: Reativar após executar create_pending_appointments_table_complete.sql
+            /*
             await supabaseAdmin
                 .from('pending_appointments')
                 .upsert({
@@ -1038,8 +1089,183 @@ class TelegramProcessor {
                     expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
                     created_at: new Date().toISOString()
                 });
+            */
         } catch (error) {
             console.error('❌ Erro salvando cancelamento pendente:', error);
+        }
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Salvar seleção pendente de produto
+    async savePendingProductSelection(contactId, userId, products, analysis) {
+        try {
+            // ⚠️ TEMPORÁRIO: Desabilitado até a tabela pending_appointments ser criada
+            console.log('⚠️ savePendingProductSelection temporariamente desabilitado');
+            return;
+
+            // TODO: Reativar após executar create_pending_appointments_table_complete.sql
+            /*
+            await supabaseAdmin
+                .from('pending_appointments')
+                .upsert({
+                    contact_id: contactId,
+                    user_id: userId,
+                    products: JSON.stringify(products),
+                    analysis: JSON.stringify(analysis),
+                    type: 'product_selection',
+                    expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minutos
+                    created_at: new Date().toISOString()
+                });
+            */
+        } catch (error) {
+            console.error('❌ Erro salvando seleção pendente de produto:', error);
+        }
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Salvar seleção pendente de profissional
+    async savePendingProfessionalSelection(contactId, userId, professionals, analysis) {
+        try {
+            // ⚠️ TEMPORÁRIO: Desabilitado até a tabela pending_appointments ser criada
+            console.log('⚠️ savePendingProfessionalSelection temporariamente desabilitado');
+            return;
+
+            // TODO: Reativar após executar create_pending_appointments_table_complete.sql
+            /*
+            await supabaseAdmin
+                .from('pending_appointments')
+                .upsert({
+                    contact_id: contactId,
+                    user_id: userId,
+                    professionals: JSON.stringify(professionals),
+                    analysis: JSON.stringify(analysis),
+                    type: 'professional_selection',
+                    expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minutos
+                    created_at: new Date().toISOString()
+                });
+            */
+        } catch (error) {
+            console.error('❌ Erro salvando seleção pendente de profissional:', error);
+        }
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Verificar seleção pendente de produto
+    async checkPendingProductSelection(contactId, userId) {
+        try {
+            // ⚠️ TEMPORÁRIO: Desabilitado até a tabela pending_appointments ser criada
+            console.log('⚠️ checkPendingProductSelection temporariamente desabilitado');
+            return null;
+
+            // TODO: Reativar após executar create_pending_appointments_table_complete.sql
+            /*
+            const { data, error } = await supabaseAdmin
+                .from('pending_appointments')
+                .select('*')
+                .eq('contact_id', contactId)
+                .eq('user_id', userId)
+                .eq('type', 'product_selection')
+                .single();
+            
+            if (error && error.code !== 'PGRST116') throw error;
+            return data;
+            */
+        } catch (error) {
+            console.error('❌ Erro verificando seleção pendente de produto:', error);
+            return null;
+        }
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Obter seleção pendente de profissional
+    async getPendingProfessionalSelection(contactId, userId) {
+        try {
+            // ⚠️ TEMPORÁRIO: Desabilitado até a tabela pending_appointments ser criada
+            console.log('⚠️ getPendingProfessionalSelection temporariamente desabilitado');
+            return null;
+
+            // TODO: Reativar após executar create_pending_appointments_table_complete.sql
+            /*
+            const { data, error } = await supabaseAdmin
+                .from('pending_appointments')
+                .select('*')
+                .eq('contact_id', contactId)
+                .eq('user_id', userId)
+                .eq('type', 'professional_selection')
+                .single();
+            
+            if (error && error.code !== 'PGRST116') throw error;
+            return data;
+            */
+        } catch (error) {
+            console.error('❌ Erro obtendo seleção pendente de profissional:', error);
+            return null;
+        }
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Limpar seleção pendente de produto
+    async clearPendingProductSelection(contactId, userId) {
+        try {
+            // ⚠️ TEMPORÁRIO: Desabilitado até a tabela pending_appointments ser criada
+            console.log('⚠️ clearPendingProductSelection temporariamente desabilitado');
+            return;
+
+            // TODO: Reativar após executar create_pending_appointments_table_complete.sql
+            /*
+            await supabaseAdmin
+                .from('pending_appointments')
+                .delete()
+                .eq('contact_id', contactId)
+                .eq('user_id', userId)
+                .eq('type', 'product_selection');
+            */
+        } catch (error) {
+            console.error('❌ Erro limpando seleção pendente de produto:', error);
+        }
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Limpar seleção pendente de profissional
+    async clearPendingProfessionalSelection(contactId, userId) {
+        try {
+            // ⚠️ TEMPORÁRIO: Desabilitado até a tabela pending_appointments ser criada
+            console.log('⚠️ clearPendingProfessionalSelection temporariamente desabilitado');
+            return;
+
+            // TODO: Reativar após executar create_pending_appointments_table_complete.sql
+            /*
+            await supabaseAdmin
+                .from('pending_appointments')
+                .delete()
+                .eq('contact_id', contactId)
+                .eq('user_id', userId)
+                .eq('type', 'professional_selection');
+            */
+        } catch (error) {
+            console.error('❌ Erro limpando seleção pendente de profissional:', error);
+        }
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Verificar se é seleção de profissional
+    async isProfessionalSelection(text, contactId, userId) {
+        const pending = await this.getPendingProfessionalSelection(contactId, userId);
+        return pending && this.isNumericSelection(text);
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Verificar se é seleção numérica
+    isNumericSelection(text) {
+        return /^\d+$/.test(text.trim());
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Obter contato por ID
+    async getContactById(contactId) {
+        try {
+            const { data, error } = await supabaseAdmin
+                .from('contacts')
+                .select('*')
+                .eq('id', contactId)
+                .single();
+            
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('❌ Erro obtendo contato:', error);
+            return null;
         }
     }
 
@@ -1199,129 +1425,6 @@ class TelegramProcessor {
         }
     }
 
-    async savePendingProductSelection(contactId, userId, products, analysis) {
-        try {
-            await supabaseAdmin
-                .from('pending_appointments')
-                .upsert({
-                    contact_id: contactId,
-                    user_id: userId,
-                    products: JSON.stringify(products),
-                    analysis: JSON.stringify(analysis),
-                    type: 'product_selection',
-                    expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minutos
-                    created_at: new Date().toISOString()
-                });
-        } catch (error) {
-            console.error('❌ Erro salvando seleção pendente de produto:', error);
-        }
-    }
-
-    async savePendingProfessionalSelection(contactId, userId, professionals, analysis) {
-        try {
-            await supabaseAdmin
-                .from('pending_appointments')
-                .upsert({
-                    contact_id: contactId,
-                    user_id: userId,
-                    professionals: JSON.stringify(professionals),
-                    analysis: JSON.stringify(analysis),
-                    type: 'professional_selection',
-                    expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minutos
-                    created_at: new Date().toISOString()
-                });
-        } catch (error) {
-            console.error('❌ Erro salvando seleção pendente de profissional:', error);
-        }
-    }
-
-    async checkPendingProductSelection(contactId, userId) {
-        try {
-            const { data, error } = await supabaseAdmin
-                .from('pending_appointments')
-                .select('*')
-                .eq('contact_id', contactId)
-                .eq('user_id', userId)
-                .eq('type', 'product_selection')
-                .single();
-            
-            if (error && error.code !== 'PGRST116') throw error;
-            return data;
-        } catch (error) {
-            console.error('❌ Erro verificando seleção pendente de produto:', error);
-            return null;
-        }
-    }
-
-    async getPendingProfessionalSelection(contactId, userId) {
-        try {
-            const { data, error } = await supabaseAdmin
-                .from('pending_appointments')
-                .select('*')
-                .eq('contact_id', contactId)
-                .eq('user_id', userId)
-                .eq('type', 'professional_selection')
-                .single();
-            
-            if (error && error.code !== 'PGRST116') throw error;
-            return data;
-        } catch (error) {
-            console.error('❌ Erro obtendo seleção pendente de profissional:', error);
-            return null;
-        }
-    }
-
-    async clearPendingProductSelection(contactId, userId) {
-        try {
-            await supabaseAdmin
-                .from('pending_appointments')
-                .delete()
-                .eq('contact_id', contactId)
-                .eq('user_id', userId)
-                .eq('type', 'product_selection');
-        } catch (error) {
-            console.error('❌ Erro limpando seleção pendente de produto:', error);
-        }
-    }
-
-    async clearPendingProfessionalSelection(contactId, userId) {
-        try {
-            await supabaseAdmin
-                .from('pending_appointments')
-                .delete()
-                .eq('contact_id', contactId)
-                .eq('user_id', userId)
-                .eq('type', 'professional_selection');
-        } catch (error) {
-            console.error('❌ Erro limpando seleção pendente de profissional:', error);
-        }
-    }
-
-    async isProfessionalSelection(text, contactId, userId) {
-        const pending = await this.getPendingProfessionalSelection(contactId, userId);
-        return pending && this.isNumericSelection(text);
-    }
-
-    isNumericSelection(text) {
-        return /^\d+$/.test(text.trim());
-    }
-
-    async getContactById(contactId) {
-        try {
-            const { data, error } = await supabaseAdmin
-                .from('contacts')
-                .select('*')
-                .eq('id', contactId)
-                .single();
-            
-            if (error) throw error;
-            return data;
-        } catch (error) {
-            console.error('❌ Erro obtendo contato:', error);
-            return null;
-        }
-    }
-
     async deleteGoogleCalendarEvent(accessToken, eventId) {
         try {
             const response = await axios.delete(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
@@ -1408,6 +1511,11 @@ class TelegramProcessor {
         const botConfig = await this.getUserBotConfig(userId);
         const response = { messages: ["✅ Agendamento cancelado com sucesso!"] };
         await this.sendConversationalResponseWithTyping(response, botConfig.bot_token, chatId, conversation, userId, {});
+    }
+
+    // ✅ FUNÇÃO AUXILIAR: Obter período do dia correto (DEPRECIADA - usar getCurrentTimeInfo)
+    getTimeOfDay() {
+        return this.getCurrentTimeInfo().period;
     }
 }
 
