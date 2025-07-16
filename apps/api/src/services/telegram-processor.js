@@ -160,24 +160,40 @@ class TelegramProcessor {
     }
 
     // Processar updates do Telegram (agora multi-tenant)
-    async processUpdate(update, userId) {
+    async processUpdate(req, res) {
         try {
-            if (update.message) {
-                return await this.processMessage(update.message, userId);
-            } else if (update.callback_query) {
-                return await this.processCallbackQuery(update.callback_query, userId);
+            console.log('📱 Processando update Telegram...');
+            console.log('📋 Body recebido:', JSON.stringify(req.body, null, 2));
+            
+            const result = await this.processMessage(req, res);
+            
+            if (res && !res.headersSent) {
+                return res.status(200).json({ status: 'success', result });
             }
-            return null;
+            
         } catch (error) {
-            console.error("Erro processando update Telegram:", error);
-            throw error;
+            console.error('❌ Erro em processUpdate:', error);
+            if (res && !res.headersSent) {
+                return res.status(500).json({ error: 'Erro interno' });
+            }
         }
     }
 
     // Processar mensagens (adaptado para multi-tenant com conversação natural)
     async processMessage(req, res) {
         try {
+            // ✅ VERIFICAÇÃO DE SEGURANÇA:
+            if (!req || !req.body) {
+                console.error('❌ req.body é undefined');
+                return res ? res.status(400).json({ error: 'Body inválido' }) : false;
+            }
+
             const { message } = req.body;
+            
+            if (!message) {
+                console.error('❌ message é undefined');
+                return res ? res.status(400).json({ error: 'Message não encontrada' }) : false;
+            }
             
             if (!message?.text) {
                 return res.status(200).json({ status: 'ignored', reason: 'no_text' });

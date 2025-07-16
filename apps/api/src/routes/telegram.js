@@ -4,8 +4,10 @@ const router = express.Router();
 const TelegramProcessor = require('../services/telegram-processor');
 const { validateChannelAccess } = require('../middleware/channel-validation');
 const { checkCompliance } = require('../middleware/compliance-middleware');
+router.use(express.json({ limit: '50mb' }));
+router.use(express.urlencoded({ extended: true }));
 
-const telegramProcessor = new TelegramProcessor();
+const TelegramProcessor = require('../services/telegram-processor');
 
 // Rota raiz para status do Telegram - ADICIONAR AQUI
 router.get('/', (req, res) => {
@@ -27,19 +29,21 @@ router.get('/', (req, res) => {
 // Webhook dinâmico por usuário: /api/webhook/telegram/:userId
 router.post('/webhook/:userId', async (req, res) => {
     try {
-        const { userId } = req.params;
-        const update = req.body;
+        console.log('📱 Telegram webhook recebido para usuário:', req.params.userId);
+        console.log('📦 Body:', req.body ? 'OK' : 'UNDEFINED');
         
-        console.log(`📱 Telegram webhook recebido para usuário: ${userId}`);
+        await telegramProcessor.processUpdate(req, res);
         
-        if (update.message || update.callback_query) {
-            await telegramProcessor.processUpdate(update, userId);
+        // Garantir que sempre responde
+        if (!res.headersSent) {
+            res.status(200).json({ status: 'processed' });
         }
-
-        res.status(200).send('OK');
+        
     } catch (error) {
-        console.error('Erro no webhook Telegram:', error);
-        res.status(500).send('Erro interno');
+        console.error('❌ Erro no webhook Telegram:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Erro interno' });
+        }
     }
 });
 
