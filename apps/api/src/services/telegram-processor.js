@@ -441,24 +441,29 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ FUNÇÃO MODIFICADA: Processar agendamento com conversação (SEMPRE PERGUNTA DATA/HORA)
+    // ✅ FUNÇÃO MODIFICADA: Processar agendamento com conversação (CORRIGIDA DEFINITIVAMENTE)
     async handleSchedulingIntentWithConversation(analysis, contact, userId, customerContext, chatId, conversation) {
         try {
             console.log('🗓 Processando agendamento com conversa natural...');
+            console.log('🗓 DEBUG: Análise recebida:', JSON.stringify(analysis, null, 2));
             
             const botConfig = await this.getUserBotConfig(userId);
             
-            // ✅ CORRIGIDO: SEMPRE perguntar data/hora quando não especificada (NUNCA assumir)
+            // ✅ CORRIGIDO: Verificar se há data/hora CLARAMENTE especificada na mensagem original
+            const originalMessage = analysis.original_message?.toLowerCase() || '';
             const dateTimeInfo = analysis.extracted_info || analysis.dateTime || {};
-            const extractedDate = dateTimeInfo.date || dateTimeInfo.suggestedDate;
-            const extractedTime = dateTimeInfo.time || dateTimeInfo.suggestedTime;
             
-            console.log('📅 DEBUG: Data extraída:', extractedDate);
-            console.log('📅 DEBUG: Hora extraída:', extractedTime);
+            console.log('📅 DEBUG: Mensagem original:', originalMessage);
+            console.log('📅 DEBUG: DateTimeInfo extraído:', dateTimeInfo);
             
-            // Se não tiver data/hora específica, SEMPRE perguntar (NUNCA assumir horário atual)
-            if (!extractedDate || !extractedTime) {
-                console.log('📅 SEMPRE perguntando data/hora quando não especificada...');
+            // Verificar se a mensagem original contém especificação clara de data/hora
+            const hasExplicitDateTime = this.hasExplicitDateTimeInMessage(originalMessage);
+            
+            console.log('📅 DEBUG: Tem data/hora explícita na mensagem?', hasExplicitDateTime);
+            
+            // Se NÃO há especificação clara de data/hora na mensagem original, SEMPRE perguntar
+            if (!hasExplicitDateTime) {
+                console.log('📅 SEMPRE perguntando data/hora - não há especificação clara na mensagem...');
                 
                 const askDateTimeResponse = await this.conversationEngine.generateNaturalResponse('ask_datetime', customerContext, {
                     name: contact.name
@@ -472,7 +477,11 @@ class TelegramProcessor {
                 return;
             }
             
-            console.log(`📅 Data/hora especificada pelo usuário: ${extractedDate} às ${extractedTime}`);
+            // Se chegou aqui, há especificação clara - usar os dados extraídos
+            const extractedDate = dateTimeInfo.date || dateTimeInfo.suggestedDate;
+            const extractedTime = dateTimeInfo.time || dateTimeInfo.suggestedTime;
+            
+            console.log(`📅 Data/hora claramente especificada - Data: ${extractedDate}, Hora: ${extractedTime}`);
             
             // Verificar horário comercial APENAS para a data/hora especificada pelo usuário
             const isWithinBusinessHours = await this.checkBusinessHours(extractedDate, extractedTime, userId);
@@ -520,20 +529,74 @@ class TelegramProcessor {
         }
     }
 
+    // ✅ NOVA FUNÇÃO: Verificar se mensagem tem data/hora explícita
+    hasExplicitDateTimeInMessage(message) {
+        // Palavras que indicam especificação de tempo
+        const timeIndicators = [
+            // Horários específicos
+            /\d{1,2}:\d{2}/, // 14:30, 9:00
+            /\d{1,2}h\d{0,2}/, // 14h30, 9h
+            /\d{1,2}\s*(hora|horas)/, // 2 horas, 14 hora
+            
+            // Datas específicas
+            /amanhã/, /amanha/,
+            /hoje/,
+            /segunda/, /terça/, /terca/, /quarta/, /quinta/, /sexta/, /sabado/, /sábado/, /domingo/,
+            /\d{1,2}\/\d{1,2}/, // 16/07, 5/8
+            /\d{1,2}\s*de\s*(janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)/,
+            
+            // Períodos específicos
+            /manhã/, /manha/, /tarde/, /noite/, /madrugada/,
+            /cedo/, /cedinho/,
+            /meio.dia/, /meio-dia/,
+            
+            // Expressões temporais específicas
+            /próxima/, /proxima/, /próximo/, /proximo/,
+            /na\s*(segunda|terça|terca|quarta|quinta|sexta|sabado|sábado|domingo)/,
+            /às\s*\d/, /as\s*\d/, // às 14, as 9
+            /para\s*(amanhã|amanha|hoje|segunda|terça|terca|quarta|quinta|sexta)/
+        ];
+        
+        const hasExplicitTime = timeIndicators.some(pattern => pattern.test(message));
+        
+        console.log('📅 DEBUG hasExplicitDateTimeInMessage:', {
+            message: message,
+            hasExplicitTime: hasExplicitTime,
+            matchedPatterns: timeIndicators.filter(pattern => pattern.test(message))
+        });
+        
+        return hasExplicitTime;
+    }
+
     // ✅ NOVA FUNÇÃO: Obter informações corretas de horário atual (CORRIGIDA PARA BRASÍLIA)
     getCurrentTimeInfo() {
-        // Criar data atual e ajustar para horário de Brasília (UTC-3)
+        // Obter horário atual em UTC
         const now = new Date();
-        const brasiliaTime = new Date(now.getTime() - (3 * 60 * 60 * 1000)); // UTC-3
         
-        // Usar horário local do servidor se já estiver configurado para Brasília
-        // Caso contrário, usar o ajuste manual
-        const localTime = new Date();
-        const hour = localTime.getHours();
-        const minute = localTime.getMinutes();
+        // Converter para horário de Brasília (UTC-3)
+        // Se o servidor estiver em UTC, subtraímos 3 horas
+        // Se já estiver em horário local brasileiro, usamos direto
         
-        console.log(`🕐 DEBUG getCurrentTimeInfo: Hora do servidor = ${hour}:${minute}`);
-        console.log(`🕐 DEBUG getCurrentTimeInfo: Timezone offset = ${now.getTimezoneOffset()}`);
+        // Verificar se o servidor está em UTC (offset = 0) ou já em horário local
+        const serverOffset = now.getTimezoneOffset(); // em minutos
+        console.log(`🕐 DEBUG: Server timezone offset = ${serverOffset} minutos`);
+        
+        let brasiliaTime;
+        if (serverOffset === 0) {
+            // Servidor em UTC, converter para Brasília (UTC-3)
+            brasiliaTime = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+            console.log(`🕐 DEBUG: Servidor em UTC, convertendo para Brasília`);
+        } else {
+            // Servidor já pode estar em horário local, usar direto
+            brasiliaTime = now;
+            console.log(`🕐 DEBUG: Usando horário local do servidor`);
+        }
+        
+        const hour = brasiliaTime.getHours();
+        const minute = brasiliaTime.getMinutes();
+        
+        console.log(`🕐 DEBUG getCurrentTimeInfo: Hora original do servidor = ${now.getHours()}:${now.getMinutes()}`);
+        console.log(`🕐 DEBUG getCurrentTimeInfo: Hora ajustada para Brasília = ${hour}:${minute}`);
         
         let period;
         if (hour >= 5 && hour < 12) {
@@ -551,9 +614,11 @@ class TelegramProcessor {
             minute: minute,
             period: period,
             fullTime: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
-            date: localTime.toLocaleDateString('pt-BR'),
-            timestamp: localTime.toISOString(),
-            timezone: 'America/Sao_Paulo'
+            date: brasiliaTime.toLocaleDateString('pt-BR'),
+            timestamp: brasiliaTime.toISOString(),
+            timezone: 'America/Sao_Paulo',
+            serverOriginalTime: `${now.getHours()}:${now.getMinutes()}`,
+            adjustedTime: `${hour}:${minute}`
         };
         
         console.log(`🕐 DEBUG getCurrentTimeInfo: Retornando:`, timeInfo);
