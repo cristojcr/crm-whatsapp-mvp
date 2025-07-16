@@ -6,7 +6,8 @@ const { validateChannelAccess } = require('../middleware/channel-validation');
 const { checkCompliance } = require('../middleware/compliance-middleware');
 router.use(express.json({ limit: '50mb' }));
 router.use(express.urlencoded({ extended: true }));
-
+// ✅ ADICIONAR ESTA LINHA AQUI:
+const telegramProcessor = new TelegramProcessor();
 
 // Rota raiz para status do Telegram - ADICIONAR AQUI
 router.get('/', (req, res) => {
