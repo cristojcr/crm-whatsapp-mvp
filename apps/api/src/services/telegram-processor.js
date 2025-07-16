@@ -122,8 +122,8 @@ class TelegramProcessor {
                                 errorMessage += "🕐 *Motivo:* Fora do horário de funcionamento.\n\n";
                                 errorMessage += "💬 *Por favor, escolha outro horário ou entre em contato diretamente.*";
                                 
-                                await this.sendMessage(contact.id, errorMessage);
-                                return;
+                                await this.sendMessage(userId, contact.id, errorMessage, { parse_mode: "Markdown" });
+                                return responseText = errorMessage; // Retorna a mensagem e interrompe o fluxo
                             }
                         } catch (error) {
                             console.error("❌ Erro ao verificar horário comercial global:", error);
