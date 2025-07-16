@@ -257,29 +257,90 @@ function extractDateTime(message) {
     const patterns = {
       tomorrow: /\b(amanhã|amanha)\b/gi,
       today: /\b(hoje)\b/gi,
-      time: /\b(\d{1,2}):?(\d{0,2})\s?(h|hs|horas?)?\b/gi
+      weekday: /\b(segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo)\b/gi,
+      time: /\b(\d{1,2})[h:.]?(\d{0,2})\s?(h|hs|horas?)?\b/gi,
+      specificDate: /\b(\d{1,2})[\/\-\.](\d{1,2})(?:[\/\-\.](\d{2,4}))?\b/gi
     };
     
     let suggestedDate = null;
     let suggestedTime = null;
     
+    // Extrair data
     if (patterns.tomorrow.test(message)) {
       suggestedDate = new Date(now);
       suggestedDate.setDate(now.getDate() + 1);
     } else if (patterns.today.test(message)) {
       suggestedDate = new Date(now);
+    } else {
+      // Verificar dia da semana
+      const weekdayMatch = message.match(patterns.weekday);
+      if (weekdayMatch && weekdayMatch.length > 0) {
+        const weekday = weekdayMatch[0].toLowerCase();
+        const weekdayMap = {
+          'domingo': 0, 'segunda': 1, 'terça': 2, 'terca': 2, 
+          'quarta': 3, 'quinta': 4, 'sexta': 5, 
+          'sábado': 6, 'sabado': 6
+        };
+        
+        if (weekdayMap[weekday] !== undefined) {
+          suggestedDate = new Date(now);
+          const currentDay = suggestedDate.getDay();
+          const targetDay = weekdayMap[weekday];
+          const daysToAdd = (targetDay + 7 - currentDay) % 7;
+          
+          // Se hoje for o dia mencionado e ainda não passou, use hoje
+          if (daysToAdd === 0 && now.getHours() < 18) {
+            // Não adiciona dias
+          } else if (daysToAdd === 0) {
+            // Se hoje for o dia mencionado mas já passou, use próxima semana
+            suggestedDate.setDate(suggestedDate.getDate() + 7);
+          } else {
+            // Caso contrário, avance para o próximo dia da semana correspondente
+            suggestedDate.setDate(suggestedDate.getDate() + daysToAdd);
+          }
+        }
+      } else {
+        // Verificar data específica (DD/MM/YYYY ou DD/MM)
+        const dateMatch = message.match(patterns.specificDate);
+        if (dateMatch && dateMatch.length > 0) {
+          const dateParts = dateMatch[0].split(/[\/\-\.]/);
+          const day = parseInt(dateParts[0]);
+          const month = parseInt(dateParts[1]) - 1; // Mês em JavaScript é 0-indexed
+          const year = dateParts.length > 2 ? parseInt(dateParts[2]) : now.getFullYear();
+          
+          // Ajustar ano se for fornecido como 2 dígitos
+          const adjustedYear = year < 100 ? 2000 + year : year;
+          
+          if (day >= 1 && day <= 31 && month >= 0 && month <= 11) {
+            suggestedDate = new Date(adjustedYear, month, day);
+          }
+        }
+      }
     }
     
+    // Se não conseguiu extrair uma data, use a data atual
+    if (!suggestedDate) {
+      suggestedDate = new Date(now);
+    }
+    
+    // Extrair hora
     const timeMatch = message.match(patterns.time);
     if (timeMatch && timeMatch.length > 0) {
       const timeStr = timeMatch[0];
-      const timeDigits = timeStr.match(/\d+/g);
-      if (timeDigits && timeDigits.length > 0) {
-        const hour = parseInt(timeDigits[0]);
-        const minute = timeDigits.length > 1 ? parseInt(timeDigits[1]) : 0;
+      console.log('🕒 Horário encontrado na mensagem:', timeStr);
+      
+      // Extrair horas e minutos usando regex mais precisa
+      const hourMinuteMatch = timeStr.match(/(\d{1,2})[h:.]?(\d{0,2})/);
+      if (hourMinuteMatch) {
+        const hour = parseInt(hourMinuteMatch[1]);
+        // Se o segundo grupo capturou algo, use-o como minutos, caso contrário, use 0
+        const minute = hourMinuteMatch[2] ? parseInt(hourMinuteMatch[2]) : 0;
+        
+        console.log(`🕒 Hora extraída: ${hour}:${minute}`);
         
         if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
           suggestedTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+          console.log('🕒 Horário formatado:', suggestedTime);
         }
       }
     }
@@ -289,6 +350,8 @@ function extractDateTime(message) {
     if (suggestedDate && suggestedTime) {
       const [year, month, day] = suggestedDate.toISOString().split('T')[0].split('-');
       const [hour, minute] = suggestedTime.split(':');
+      console.log(`🗓️ Data construída: ${year}-${month}-${day} ${hour}:${minute}`);
+      
       // Criar a data no fuso horário de Brasília
       finalDate = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
       // Ajustar para o offset de Brasília (GMT-3)
@@ -303,12 +366,15 @@ function extractDateTime(message) {
       finalDate.setHours(finalDate.getHours() - (finalDate.getTimezoneOffset() / 60) - 3);
     }
 
-    return {
+    const result = {
       suggestedDate: finalDate ? finalDate.toISOString().split('T')[0] : null,
       suggestedTime: finalDate ? finalDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
       hasDateReference: suggestedDate !== null,
       hasTimeReference: suggestedTime !== null
     };
+    
+    console.log('📅 Resultado da extração de data/hora:', result);
+    return result;
     
   } catch (error) {
     console.error('❌ Erro ao extrair data/hora:', error);

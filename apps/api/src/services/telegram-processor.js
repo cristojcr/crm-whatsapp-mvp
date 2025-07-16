@@ -85,7 +85,13 @@ class TelegramProcessor {
                         // Criar um objeto Date com base na data e hora extraídas
                         const [year, month, day] = extractedDate.split("-").map(Number);
                         const [hours, minutes] = extractedTime.split(":").map(Number);
-                        const appointmentDate = new Date(Date.UTC(year, month - 1, day, hours + 3, minutes, 0));
+                        const appointmentDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
+                        
+                        // Ajustar para o fuso horário de Brasília (GMT-3)
+                        appointmentDate.setUTCHours(appointmentDate.getUTCHours() - 3);
+                        
+                        console.log(`📅 Data e hora do agendamento: ${appointmentDate.toISOString()}`);
+                        console.log(`🕒 Horário extraído: ${hours}:${minutes}`);
                         
                         // Verificar se o horário está dentro do horário comercial global
                         try {
@@ -100,15 +106,24 @@ class TelegramProcessor {
                                 })
                             });
                             
+                            if (!availabilityResponse.ok) {
+                                console.error(`❌ Erro na resposta da API: ${availabilityResponse.status} ${availabilityResponse.statusText}`);
+                                throw new Error(`Erro na resposta da API: ${availabilityResponse.status}`);
+                            }
+                            
                             const availabilityResult = await availabilityResponse.json();
-                            console.log("📊 Resultado da verificação de horário comercial global:", availabilityResult);
+                            console.log("📊 Resultado da verificação de horário comercial global:", JSON.stringify(availabilityResult, null, 2));
                             
                             if (!availabilityResult.success || !availabilityResult.within_business_hours) {
                                 // Horário fora do expediente, retornar mensagem de erro
+                                console.log("❌ Horário fora do expediente, retornando mensagem de erro");
+                                
                                 let errorMessage = "❌ *Ops!* O horário solicitado não está disponível.\n\n";
                                 errorMessage += "🕐 *Motivo:* Fora do horário de funcionamento.\n\n";
                                 errorMessage += "💬 *Por favor, escolha outro horário ou entre em contato diretamente.*";
-                                return errorMessage;
+                                
+                                await this.sendMessage(contact.id, errorMessage);
+                                return;
                             }
                         } catch (error) {
                             console.error("❌ Erro ao verificar horário comercial global:", error);

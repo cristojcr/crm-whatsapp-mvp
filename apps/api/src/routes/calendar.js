@@ -1276,8 +1276,10 @@ router.post("/check-business-hours/:companyId", async (req, res) => {
             minute: '2-digit'
         });
         
+        console.log(`📅 Dia da semana: ${dayOfWeek}, Horário: ${timeOfDay}`);
+        
         // Buscar horário global da empresa
-        const { data: businessHours } = await supabase
+        const { data: businessHours, error } = await supabase
             .from("company_business_hours")
             .select("*")
             .eq("company_id", companyId)
@@ -1285,45 +1287,63 @@ router.post("/check-business-hours/:companyId", async (req, res) => {
             .eq("is_active", true)
             .single();
         
-        // Se não encontrou configurações específicas, usar horário padrão
+        if (error) {
+            console.log(`⚠️ Erro ao buscar horário comercial: ${error.message}`);
+        }
+        
+        console.log(`📊 Configuração de horário comercial encontrada:`, businessHours);
+        
+        // Se não encontrou configurações específicas para este dia, verificar se há configuração padrão
         if (!businessHours) {
-            console.log(`⚠️ Nenhuma configuração específica encontrada, usando horário padrão`);
+            console.log(`⚠️ Nenhuma configuração específica encontrada para o dia ${dayOfWeek}`);
             
-            // Horário comercial padrão: segunda a sexta, 8h às 18h
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-            if (isWeekend) {
-                console.log(`❌ Dia não disponível: fim de semana`);
+            // Buscar configuração padrão (qualquer dia da semana)
+            const { data: defaultBusinessHours } = await supabase
+                .from("company_business_hours")
+                .select("*")
+                .eq("company_id", companyId)
+                .eq("is_active", true)
+                .order("day_of_week", { ascending: true })
+                .limit(1);
+            
+            if (defaultBusinessHours && defaultBusinessHours.length > 0) {
+                console.log(`✅ Usando configuração padrão:`, defaultBusinessHours[0]);
+                
+                // Verificar se está dentro do horário de funcionamento
+                if (timeOfDay < defaultBusinessHours[0].start_time || timeOfDay >= defaultBusinessHours[0].end_time) {
+                    console.log(`❌ Fora do horário padrão: ${timeOfDay} não está entre ${defaultBusinessHours[0].start_time} e ${defaultBusinessHours[0].end_time}`);
+                    return res.json({ 
+                        success: true, 
+                        within_business_hours: false,
+                        reason: "outside_hours"
+                    });
+                }
+                
+                // Verificar se está no horário de almoço/pausa
+                if (defaultBusinessHours[0].break_start_time && defaultBusinessHours[0].break_end_time) {
+                    if (timeOfDay >= defaultBusinessHours[0].break_start_time && timeOfDay < defaultBusinessHours[0].break_end_time) {
+                        console.log(`❌ Horário de pausa padrão: ${timeOfDay} está entre ${defaultBusinessHours[0].break_start_time} e ${defaultBusinessHours[0].break_end_time}`);
+                        return res.json({ 
+                            success: true, 
+                            within_business_hours: false,
+                            reason: "lunch_break"
+                        });
+                    }
+                }
+                
+                console.log(`✅ Horário válido pelo padrão`);
                 return res.json({ 
                     success: true, 
-                    within_business_hours: false,
-                    reason: "weekend"
+                    within_business_hours: true
                 });
             }
             
-            // Verificar se está dentro do horário comercial padrão (8h às 18h)
-            if (timeOfDay < "08:00" || timeOfDay >= "18:00") {
-                console.log(`❌ Fora do horário padrão: ${timeOfDay} não está entre 08:00 e 18:00`);
-                return res.json({ 
-                    success: true, 
-                    within_business_hours: false,
-                    reason: "outside_hours"
-                });
-            }
-            
-            // Horário de almoço padrão (12h às 13h)
-            if (timeOfDay >= "12:00" && timeOfDay < "13:00") {
-                console.log(`❌ Horário de almoço padrão: ${timeOfDay} está entre 12:00 e 13:00`);
-                return res.json({ 
-                    success: true, 
-                    within_business_hours: false,
-                    reason: "lunch_break"
-                });
-            }
-            
-            console.log(`✅ Horário válido pelo padrão`);
+            // Se não encontrou nenhuma configuração, assumir que não há atendimento
+            console.log(`❌ Nenhuma configuração de horário comercial encontrada`);
             return res.json({ 
                 success: true, 
-                within_business_hours: true
+                within_business_hours: false,
+                reason: "no_business_hours"
             });
         }
 
