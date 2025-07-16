@@ -10,6 +10,9 @@ const IntelligentScheduling = require('./intelligent-scheduling');
 class TelegramProcessor {
     constructor() {
         // Configuração dinâmica - busca por usuário
+        this.maxConcurrentRequests = 5;
+        this.currentRequests = 0;
+        this.requestQueue = [];
         this.conversationEngine = new ConversationEngine();
         this.customerContext = new CustomerContext();
         this.processingMessages = new Set(); // Controle para evitar processamento duplo
@@ -1867,7 +1870,7 @@ class TelegramProcessor {
     getTimeOfDay() {
         return this.getCurrentTimeInfo().period;
     }
-}
+
 
 // ✅ FUNÇÃO AUXILIAR: Buscar/Criar contato e conversa (manter lógica existente)
     async getOrCreateContactAndConversation(message) {
