@@ -1,4 +1,4 @@
-const express = require("express");
+onst express = require("express");
 const { google } = require("googleapis");
 const { supabase } = require("../config/supabase");
 const router = express.Router();
@@ -54,6 +54,143 @@ const clearExpiredTokens = async (professionalId) => {
     }
 };
 
+// =====================================================
+// NOVAS FUNÇÕES PARA HORÁRIO COMERCIAL E BLOQUEIOS
+// =====================================================
+
+// Função para verificar se um horário está dentro do horário comercial
+const isWithinBusinessHours = async (professionalId, companyId, dateTime) => {
+    try {
+        const date = new Date(dateTime);
+        const dayOfWeek = date.getDay(); // 0=Domingo, 6=Sábado
+        
+        // ✅ CORREÇÃO: Extrair horário no fuso horário de Brasília (GMT-3)
+        const timeOfDay = date.toLocaleTimeString('pt-BR', { 
+            timeZone: 'America/Sao_Paulo',
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        console.log(`🕐 Verificando horário comercial: ${timeOfDay} no dia ${dayOfWeek} para profissional ${professionalId}`);
+
+        // Primeiro, verificar se o profissional tem horário individual
+        const { data: professional } = await supabase
+            .from("professionals")
+            .select("has_individual_business_hours")
+            .eq("id", professionalId)
+            .single();
+
+        let businessHours = null;
+
+        if (professional?.has_individual_business_hours) {
+            // Buscar horário individual do profissional
+            const { data } = await supabase
+                .from("professional_business_hours")
+                .select("*")
+                .eq("professional_id", professionalId)
+                .eq("day_of_week", dayOfWeek)
+                .eq("is_active", true)
+                .single();
+            businessHours = data;
+            console.log(`📋 Horário individual encontrado:`, businessHours);
+        }
+
+        if (!businessHours) {
+            // Buscar horário global da empresa
+            const { data } = await supabase
+                .from("company_business_hours")
+                .select("*")
+                .eq("company_id", companyId)
+                .eq("day_of_week", dayOfWeek)
+                .eq("is_active", true)
+                .single();
+            businessHours = data;
+            console.log(`🏢 Horário da empresa encontrado:`, businessHours);
+        }
+
+        if (!businessHours) {
+            // Se não há horário definido, considerar como disponível
+            console.log(`✅ Nenhum horário comercial definido - permitindo agendamento`);
+            return true;
+        }
+
+        // Verificar se está dentro do horário de funcionamento
+        if (timeOfDay < businessHours.start_time || timeOfDay > businessHours.end_time) {
+            console.log(`❌ Fora do horário: ${timeOfDay} não está entre ${businessHours.start_time} e ${businessHours.end_time}`);
+            return false;
+        }
+
+        // Verificar se está no horário de almoço/pausa
+        if (businessHours.break_start_time && businessHours.break_end_time) {
+            if (timeOfDay >= businessHours.break_start_time && timeOfDay <= businessHours.break_end_time) {
+                console.log(`❌ Horário de pausa: ${timeOfDay} está entre ${businessHours.break_start_time} e ${businessHours.break_end_time}`);
+                return false;
+            }
+        }
+
+        console.log(`✅ Horário válido: ${timeOfDay} está dentro do horário comercial`);
+        return true;
+    } catch (error) {
+        console.error("❌ Erro ao verificar horário comercial:", error);
+        return true; // Em caso de erro, permitir agendamento
+    }
+};
+
+// Função para verificar se um horário está bloqueado
+const isTimeBlocked = async (professionalId, companyId, startDateTime, endDateTime) => {
+    try {
+        // Verificar bloqueios individuais do profissional
+        const { data: individualBlocks } = await supabase
+            .from("blocked_times")
+            .select("*")
+            .eq("professional_id", professionalId)
+            .or(`and(start_datetime.lte.${startDateTime},end_datetime.gt.${startDateTime}),and(start_datetime.lt.${endDateTime},end_datetime.gte.${endDateTime}),and(start_datetime.gte.${startDateTime},end_datetime.lte.${endDateTime})`);
+
+        if (individualBlocks && individualBlocks.length > 0) {
+            return true;
+        }
+
+        // Verificar bloqueios globais da empresa
+        const { data: globalBlocks } = await supabase
+            .from("global_blocked_times")
+            .select("*")
+            .eq("company_id", companyId)
+            .or(`applies_to_all_professionals.eq.true,selected_professional_ids.cs.{${professionalId}}`)
+            .or(`and(start_datetime.lte.${startDateTime},end_datetime.gt.${startDateTime}),and(start_datetime.lt.${endDateTime},end_datetime.gte.${endDateTime}),and(start_datetime.gte.${startDateTime},end_datetime.lte.${endDateTime})`);
+
+        return globalBlocks && globalBlocks.length > 0;
+    } catch (error) {
+        console.error("❌ Erro ao verificar bloqueios:", error);
+        return false; // Em caso de erro, não bloquear
+    }
+};
+
+// Função para calcular endDateTime baseado na duração do profissional
+const calculateEndDateTime = async (professionalId, startDateTime) => {
+    try {
+        const { data: professional } = await supabase
+            .from("professionals")
+            .select("default_appointment_duration_minutes")
+            .eq("id", professionalId)
+            .single();
+
+        const durationMinutes = professional?.default_appointment_duration_minutes || 60;
+        const endDateTime = new Date(new Date(startDateTime).getTime() + durationMinutes * 60000);
+        
+        return endDateTime.toISOString();
+    } catch (error) {
+        console.error("❌ Erro ao calcular duração:", error);
+        // Fallback para 1 hora
+        const endDateTime = new Date(new Date(startDateTime).getTime() + 60 * 60000);
+        return endDateTime.toISOString();
+    }
+};
+
+// =====================================================
+// ROTAS EXISTENTES (mantidas)
+// =====================================================
+
 // GET /api/calendar/test - Rota de teste
 router.get("/test", (req, res) => {
     res.json({
@@ -67,7 +204,17 @@ router.get("/test", (req, res) => {
             "GET /oauth2callback",
             "GET /events/:professionalId",
             "POST /create/:professionalId",
-            "POST /disconnect/:professionalId"
+            "POST /disconnect/:professionalId",
+            // Novas rotas
+            "GET /business-hours/company/:companyId",
+            "POST /business-hours/company/:companyId",
+            "GET /business-hours/professional/:professionalId",
+            "POST /business-hours/professional/:professionalId",
+            "GET /blocked-times/professional/:professionalId",
+            "POST /blocked-times/professional/:professionalId",
+            "GET /blocked-times/global/:companyId",
+            "POST /blocked-times/global/:companyId",
+            "POST /check-availability/:professionalId"
         ]
     });
 });
@@ -102,7 +249,9 @@ router.get("/status/:professionalId", authenticateUser, async (req, res) => {
                 id: professional.id,
                 name: professional.name,
                 connected: connected,
-                last_sync: professional.last_sync_at
+                last_sync: professional.last_sync_at,
+                default_duration: professional.default_appointment_duration_minutes || 60,
+                has_individual_hours: professional.has_individual_business_hours || false
             }
         });
 
@@ -514,6 +663,27 @@ router.post("/create/:professionalId", async (req, res) => {
             return res.status(400).json({ error: "Google Calendar não conectado para este profissional" });
         }
 
+        // ✅ VERIFICAR DISPONIBILIDADE ANTES DE CRIAR EVENTO
+        const finalEndDateTime = endDateTime || await calculateEndDateTime(professionalId, startDateTime);
+        
+        // Verificar horário comercial
+        const withinBusinessHours = await isWithinBusinessHours(professionalId, professional.company_id, startDateTime);
+        if (!withinBusinessHours) {
+            return res.status(400).json({ 
+                error: "Horário fora do funcionamento comercial",
+                details: "O horário solicitado está fora do horário de funcionamento da empresa ou do profissional"
+            });
+        }
+
+        // Verificar bloqueios
+        const isBlocked = await isTimeBlocked(professionalId, professional.company_id, startDateTime, finalEndDateTime);
+        if (isBlocked) {
+            return res.status(400).json({ 
+                error: "Horário bloqueado",
+                details: "O horário solicitado está bloqueado para agendamentos"
+            });
+        }
+
         // ✅ VERIFICAR E RENOVAR TOKEN SE NECESSÁRIO
         let accessToken = professional.google_access_token;
         
@@ -548,7 +718,7 @@ router.post("/create/:professionalId", async (req, res) => {
                 timeZone: "America/Sao_Paulo"
             },
             end: {
-                dateTime: endDateTime,
+                dateTime: finalEndDateTime,
                 timeZone: "America/Sao_Paulo"
             },
             attendees: attendees || [], // Usar attendees do req.body
@@ -562,7 +732,7 @@ router.post("/create/:professionalId", async (req, res) => {
         };
 
         console.log("📅 Criando evento:", event.summary);
-        console.log("🕒 Horário:", startDateTime, "→", endDateTime);
+        console.log("🕒 Horário:", startDateTime, "→", finalEndDateTime);
         
         const response = await calendar.events.insert({
             calendarId: "primary",
@@ -751,6 +921,291 @@ router.delete("/delete/:professionalId/:eventId", authenticateUser, async (req, 
             error: "Erro interno do servidor",
             details: error.message 
         });
+    }
+});
+
+// =====================================================
+// NOVAS ROTAS PARA HORÁRIO COMERCIAL
+// =====================================================
+
+// GET /api/calendar/business-hours/company/:companyId - Buscar horário comercial da empresa
+router.get("/business-hours/company/:companyId", authenticateUser, async (req, res) => {
+    try {
+        const { companyId } = req.params;
+
+        const { data: businessHours, error } = await supabase
+            .from("company_business_hours")
+            .select("*")
+            .eq("company_id", companyId)
+            .order("day_of_week");
+
+        if (error) {
+            return res.status(500).json({ error: "Erro ao buscar horário comercial" });
+        }
+
+        res.json({
+            success: true,
+            business_hours: businessHours || []
+        });
+
+    } catch (error) {
+        console.error("❌ Erro ao buscar horário comercial da empresa:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
+});
+
+// POST /api/calendar/business-hours/company/:companyId - Salvar horário comercial da empresa
+router.post("/business-hours/company/:companyId", authenticateUser, async (req, res) => {
+    try {
+        const { companyId } = req.params;
+        const { business_hours } = req.body;
+
+        // Deletar horários existentes
+        await supabase
+            .from("company_business_hours")
+            .delete()
+            .eq("company_id", companyId);
+
+        // Inserir novos horários
+        if (business_hours && business_hours.length > 0) {
+            const { error } = await supabase
+                .from("company_business_hours")
+                .insert(business_hours.map(hour => ({
+                    ...hour,
+                    company_id: companyId
+                })));
+
+            if (error) {
+                return res.status(500).json({ error: "Erro ao salvar horário comercial" });
+            }
+        }
+
+        res.json({
+            success: true,
+            message: "Horário comercial salvo com sucesso"
+        });
+
+    } catch (error) {
+        console.error("❌ Erro ao salvar horário comercial da empresa:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
+});
+
+// GET /api/calendar/business-hours/professional/:professionalId - Buscar horário comercial do profissional
+router.get("/business-hours/professional/:professionalId", authenticateUser, async (req, res) => {
+    try {
+        const { professionalId } = req.params;
+
+        const { data: businessHours, error } = await supabase
+            .from("professional_business_hours")
+            .select("*")
+            .eq("professional_id", professionalId)
+            .order("day_of_week");
+
+        if (error) {
+            return res.status(500).json({ error: "Erro ao buscar horário comercial" });
+        }
+
+        res.json({
+            success: true,
+            business_hours: businessHours || []
+        });
+
+    } catch (error) {
+        console.error("❌ Erro ao buscar horário comercial do profissional:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
+});
+
+// POST /api/calendar/business-hours/professional/:professionalId - Salvar horário comercial do profissional
+router.post("/business-hours/professional/:professionalId", authenticateUser, async (req, res) => {
+    try {
+        const { professionalId } = req.params;
+        const { business_hours, has_individual_hours } = req.body;
+
+        // Atualizar flag no profissional
+        await supabase
+            .from("professionals")
+            .update({ has_individual_business_hours: has_individual_hours })
+            .eq("id", professionalId);
+
+        // Deletar horários existentes
+        await supabase
+            .from("professional_business_hours")
+            .delete()
+            .eq("professional_id", professionalId);
+
+        // Inserir novos horários se habilitado
+        if (has_individual_hours && business_hours && business_hours.length > 0) {
+            const { error } = await supabase
+                .from("professional_business_hours")
+                .insert(business_hours.map(hour => ({
+                    ...hour,
+                    professional_id: professionalId
+                })));
+
+            if (error) {
+                return res.status(500).json({ error: "Erro ao salvar horário comercial" });
+            }
+        }
+
+        res.json({
+            success: true,
+            message: "Horário comercial do profissional salvo com sucesso"
+        });
+
+    } catch (error) {
+        console.error("❌ Erro ao salvar horário comercial do profissional:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
+});
+
+// =====================================================
+// NOVAS ROTAS PARA BLOQUEIO DE HORÁRIOS
+// =====================================================
+
+// GET /api/calendar/blocked-times/professional/:professionalId - Buscar bloqueios do profissional
+router.get("/blocked-times/professional/:professionalId", authenticateUser, async (req, res) => {
+    try {
+        const { professionalId } = req.params;
+
+        const { data: blockedTimes, error } = await supabase
+            .from("blocked_times")
+            .select("*")
+            .eq("professional_id", professionalId)
+            .order("start_datetime");
+
+        if (error) {
+            return res.status(500).json({ error: "Erro ao buscar bloqueios" });
+        }
+
+        res.json({
+            success: true,
+            blocked_times: blockedTimes || []
+        });
+
+    } catch (error) {
+        console.error("❌ Erro ao buscar bloqueios do profissional:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
+});
+
+// POST /api/calendar/blocked-times/professional/:professionalId - Criar bloqueio do profissional
+router.post("/blocked-times/professional/:professionalId", authenticateUser, async (req, res) => {
+    try {
+        const { professionalId } = req.params;
+        const blockData = { ...req.body, professional_id: professionalId };
+
+        const { data, error } = await supabase
+            .from("blocked_times")
+            .insert(blockData)
+            .select()
+            .single();
+
+        if (error) {
+            return res.status(500).json({ error: "Erro ao criar bloqueio" });
+        }
+
+        res.json({
+            success: true,
+            blocked_time: data
+        });
+
+    } catch (error) {
+        console.error("❌ Erro ao criar bloqueio do profissional:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
+});
+
+// GET /api/calendar/blocked-times/global/:companyId - Buscar bloqueios globais
+router.get("/blocked-times/global/:companyId", authenticateUser, async (req, res) => {
+    try {
+        const { companyId } = req.params;
+
+        const { data: blockedTimes, error } = await supabase
+            .from("global_blocked_times")
+            .select("*")
+            .eq("company_id", companyId)
+            .order("start_datetime");
+
+        if (error) {
+            return res.status(500).json({ error: "Erro ao buscar bloqueios globais" });
+        }
+
+        res.json({
+            success: true,
+            blocked_times: blockedTimes || []
+        });
+
+    } catch (error) {
+        console.error("❌ Erro ao buscar bloqueios globais:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
+});
+
+// POST /api/calendar/blocked-times/global/:companyId - Criar bloqueio global
+router.post("/blocked-times/global/:companyId", authenticateUser, async (req, res) => {
+    try {
+        const { companyId } = req.params;
+        const blockData = { ...req.body, company_id: companyId };
+
+        const { data, error } = await supabase
+            .from("global_blocked_times")
+            .insert(blockData)
+            .select()
+            .single();
+
+        if (error) {
+            return res.status(500).json({ error: "Erro ao criar bloqueio global" });
+        }
+
+        res.json({
+            success: true,
+            blocked_time: data
+        });
+
+    } catch (error) {
+        console.error("❌ Erro ao criar bloqueio global:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
+});
+
+// POST /api/calendar/check-availability/:professionalId - Verificar disponibilidade
+router.post("/check-availability/:professionalId", async (req, res) => {
+    try {
+        const { professionalId } = req.params;
+        const { startDateTime, endDateTime } = req.body;
+
+        // Buscar profissional
+        const { data: professional, error } = await supabase
+            .from("professionals")
+            .select("company_id")
+            .eq("id", professionalId)
+            .single();
+
+        if (error || !professional) {
+            return res.status(404).json({ error: "Profissional não encontrado" });
+        }
+
+        const finalEndDateTime = endDateTime || await calculateEndDateTime(professionalId, startDateTime);
+
+        // Verificar horário comercial
+        const withinBusinessHours = await isWithinBusinessHours(professionalId, professional.company_id, startDateTime);
+        
+        // Verificar bloqueios
+        const isBlocked = await isTimeBlocked(professionalId, professional.company_id, startDateTime, finalEndDateTime);
+
+        res.json({
+            success: true,
+            available: withinBusinessHours && !isBlocked,
+            within_business_hours: withinBusinessHours,
+            is_blocked: isBlocked,
+            calculated_end_time: finalEndDateTime
+        });
+
+    } catch (error) {
+        console.error("❌ Erro ao verificar disponibilidade:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
     }
 });
 
