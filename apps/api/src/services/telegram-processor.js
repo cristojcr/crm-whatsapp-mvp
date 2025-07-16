@@ -312,26 +312,34 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ NOVA FUNÇÃO: Analisar intenção da mensagem de forma otimizada
+    // ✅ NOVA FUNÇÃO: Analisar intenção da mensagem (SEMPRE USA INTENTION-ANALYZER)
     async analyzeMessageIntent(text, contactId, userId) {
         try {
-            // Para cumprimentos simples, retornar análise rápida sem chamar IA externa
             const lowerText = text.toLowerCase().trim();
-            const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'tudo bom', 'como vai', 'e ai'];
             
-            if (greetings.some(greeting => lowerText.includes(greeting)) && lowerText.length < 20) {
-                return {
-                    intention: 'greeting',
-                    confidence: 0.9,
-                    original_message: text,
-                    extracted_info: {},
-                    is_simple_greeting: true
-                };
-            }
-
-            // Para outras mensagens, usar o analisador de intenção completo
+            console.log('🎭 DEBUG: Analisando mensagem:', text);
+            
+            // SEMPRE usar o analisador de intenção completo para garantir análise correta
+            console.log('🎭 DEBUG: Usando intention-analyzer para análise completa');
             const intentionAnalyzer = require('./intention-analyzer');
-            return await intentionAnalyzer.analyzeWithProductsAndProfessionals(text, contactId, userId);
+            const result = await intentionAnalyzer.analyzeWithProductsAndProfessionals(text, contactId, userId);
+            
+            console.log('🎭 DEBUG: Resultado do intention-analyzer:', result);
+            
+            // Se for um cumprimento simples E não tiver outras intenções, marcar como tal
+            const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'tudo bom', 'como vai', 'e ai'];
+            const isSimpleGreeting = greetings.some(greeting => lowerText.includes(greeting)) && 
+                                   lowerText.length < 20 && 
+                                   (!result.intention || result.intention === 'general_inquiry');
+            
+            if (isSimpleGreeting) {
+                console.log('🎭 DEBUG: Marcando como cumprimento simples');
+                result.is_simple_greeting = true;
+                result.intention = result.intention || 'greeting';
+            }
+            
+            return result;
+            
         } catch (error) {
             console.error('❌ Erro analisando intenção:', error);
             // Fallback para intenção genérica
@@ -433,34 +441,38 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ FUNÇÃO MODIFICADA: Processar agendamento com conversação (CORRIGIDA - SEMPRE PERGUNTA DATA/HORA)
+    // ✅ FUNÇÃO MODIFICADA: Processar agendamento com conversação (SEMPRE PERGUNTA DATA/HORA)
     async handleSchedulingIntentWithConversation(analysis, contact, userId, customerContext, chatId, conversation) {
         try {
             console.log('🗓 Processando agendamento com conversa natural...');
             
             const botConfig = await this.getUserBotConfig(userId);
             
-            // ✅ CORRIGIDO: SEMPRE perguntar data/hora quando não especificada
+            // ✅ CORRIGIDO: SEMPRE perguntar data/hora quando não especificada (NUNCA assumir)
             const dateTimeInfo = analysis.extracted_info || analysis.dateTime || {};
             const extractedDate = dateTimeInfo.date || dateTimeInfo.suggestedDate;
             const extractedTime = dateTimeInfo.time || dateTimeInfo.suggestedTime;
             
-            // Se não tiver data/hora específica, SEMPRE perguntar (não assumir)
+            console.log('📅 DEBUG: Data extraída:', extractedDate);
+            console.log('📅 DEBUG: Hora extraída:', extractedTime);
+            
+            // Se não tiver data/hora específica, SEMPRE perguntar (NUNCA assumir horário atual)
             if (!extractedDate || !extractedTime) {
-                console.log('📅 Data/hora não especificada, perguntando ao usuário...');
+                console.log('📅 SEMPRE perguntando data/hora quando não especificada...');
                 
                 const askDateTimeResponse = await this.conversationEngine.generateNaturalResponse('ask_datetime', customerContext, {
                     name: contact.name
                 }, {
                     currentTime: this.getCurrentTimeInfo(),
-                    reason: 'scheduling_request'
+                    reason: 'scheduling_request',
+                    message: 'Para quando você gostaria de agendar?'
                 });
                 
                 await this.sendConversationalResponseWithTyping(askDateTimeResponse, botConfig.bot_token, chatId, conversation, userId, analysis);
                 return;
             }
             
-            console.log(`📅 Data/hora especificada: ${extractedDate} às ${extractedTime}`);
+            console.log(`📅 Data/hora especificada pelo usuário: ${extractedDate} às ${extractedTime}`);
             
             // Verificar horário comercial APENAS para a data/hora especificada pelo usuário
             const isWithinBusinessHours = await this.checkBusinessHours(extractedDate, extractedTime, userId);
@@ -508,13 +520,20 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ NOVA FUNÇÃO: Obter informações corretas de horário atual (CORRIGIDA COM DEBUG)
+    // ✅ NOVA FUNÇÃO: Obter informações corretas de horário atual (CORRIGIDA PARA BRASÍLIA)
     getCurrentTimeInfo() {
+        // Criar data atual e ajustar para horário de Brasília (UTC-3)
         const now = new Date();
-        const hour = now.getHours();
-        const minute = now.getMinutes();
+        const brasiliaTime = new Date(now.getTime() - (3 * 60 * 60 * 1000)); // UTC-3
         
-        console.log(`🕐 DEBUG getCurrentTimeInfo: Hora atual = ${hour}:${minute}`);
+        // Usar horário local do servidor se já estiver configurado para Brasília
+        // Caso contrário, usar o ajuste manual
+        const localTime = new Date();
+        const hour = localTime.getHours();
+        const minute = localTime.getMinutes();
+        
+        console.log(`🕐 DEBUG getCurrentTimeInfo: Hora do servidor = ${hour}:${minute}`);
+        console.log(`🕐 DEBUG getCurrentTimeInfo: Timezone offset = ${now.getTimezoneOffset()}`);
         
         let period;
         if (hour >= 5 && hour < 12) {
@@ -525,15 +544,16 @@ class TelegramProcessor {
             period = 'noite';
         }
         
-        console.log(`🕐 DEBUG getCurrentTimeInfo: Período determinado = ${period}`);
+        console.log(`🕐 DEBUG getCurrentTimeInfo: Período determinado = ${period} (hora: ${hour})`);
         
         const timeInfo = {
             hour: hour,
             minute: minute,
             period: period,
             fullTime: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
-            date: now.toLocaleDateString('pt-BR'),
-            timestamp: now.toISOString()
+            date: localTime.toLocaleDateString('pt-BR'),
+            timestamp: localTime.toISOString(),
+            timezone: 'America/Sao_Paulo'
         };
         
         console.log(`🕐 DEBUG getCurrentTimeInfo: Retornando:`, timeInfo);
