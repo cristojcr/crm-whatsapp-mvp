@@ -322,7 +322,14 @@ class TelegramProcessor {
             // SEMPRE usar o analisador de intenção completo para garantir análise correta
             console.log('🎭 DEBUG: Usando intention-analyzer para análise completa');
             const intentionAnalyzer = require('./intention-analyzer');
-            const result = await intentionAnalyzer.analyzeWithProductsAndProfessionals(text, contactId, userId);
+            const analysis = await intentionAnalyzer.analyzeWithProductsAndProfessionals(
+                text, 
+                contact.id, 
+                userId, 
+                customerContext  // 🆕 Adicionar contexto
+            );
+            console.log('🔍 INTENÇÃO DETECTADA:', analysis.intention);
+            console.log('🔍 ANÁLISE COMPLETA:', analysis);
             
             console.log('🎭 DEBUG: Resultado do intention-analyzer:', result);
             
@@ -399,6 +406,8 @@ class TelegramProcessor {
                     break;
                     
                 default:
+                    console.log('⚠️ INTENÇÃO NÃO RECONHECIDA:', analysis.intention);
+                    console.log('⚠️ MENSAGEM ORIGINAL:', text);
                     await this.handleDefaultIntentWithConversation(analysis, contact, userId, customerContext, chatId, conversation);
                     break;
             }
