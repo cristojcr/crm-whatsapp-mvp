@@ -50,53 +50,94 @@ class TelegramProcessor {
         // Buscar ou criar conversa
         const conversation = await this.findOrCreateConversation(contact.id, userId, "telegram");
         
-        // 🆕 PROCESSAMENTO COM IA
-        if (text && text.trim()) {
-            console.log("🧠 Processando mensagem com IA:", text);
-            
-            // Analisar com IA
-            const intentionAnalyzer = require("./intention-analyzer");
-            const analysis = await intentionAnalyzer.analyzeWithProductsAndProfessionals(text, contact.id, userId);
-            
-            console.log("✅ Análise IA:", analysis);
-            
-            // Processar baseado na intenção
-            let responseText = "";
-            
-            // ✅ ETAPA 1: VERIFICAR SE O USUÁRIO ESTÁ RESPONDENDO A UMA SELEÇÃO DE PRODUTO
-            const pendingProductSelection = await this.checkPendingProductSelection(contact.id, userId);
-            if (pendingProductSelection && this.isNumericSelection(text)) {
-                responseText = await this.handleProductSelection(text, pendingProductSelection, contact, userId);
-            
-            // ✅ ETAPA 2: VERIFICAR SE O USUÁRIO ESTÁ RESPONDENDO A UMA SELEÇÃO DE PROFISSIONAL
-            } else if (await this.isProfessionalSelection(text, contact.id, userId)) {
-                responseText = await this.handleProfessionalSelection(text, contact.id, userId);
-
-            // ✅ ETAPA 3: SE NÃO FOR SELEÇÃO, VERIFICAR A INTENÇÃO DA IA
-            } else if (analysis.intention === "scheduling") {
+            // 🆕 PROCESSAMENTO COM IA
+            if (text && text.trim()) {
+                console.log("🧠 Processando mensagem com IA:", text);
                 
-                // ✅ NOVA LÓGICA: PRIMEIRO, VERIFICAR SE A ANÁLISE RETORNOU PRODUTOS
-                if (analysis.products && analysis.products.length > 0) {
-                    if (analysis.products.length === 1) {
-                        // Encontrou apenas 1 produto, vamos agendar diretamente
-                        responseText = await this.processDirectScheduling(analysis.products[0], contact, userId, analysis);
-                    } else {
-                        // Encontrou múltiplos produtos, vamos mostrar as opções
-                        responseText = await this.showProductOptions(analysis.products, contact, userId, analysis);
-                    }
-                } else {
-                    // SE NÃO ENCONTROU PRODUTOS, SEGUE O FLUXO ANTIGO DE PROFISSIONAIS
-                    const professionals = await this.getAvailableProfessionals(userId);
+                // Analisar com IA
+                const intentionAnalyzer = require("./intention-analyzer");
+                const analysis = await intentionAnalyzer.analyzeWithProductsAndProfessionals(text, contact.id, userId);
+                
+                console.log("✅ Análise IA:", analysis);
+                
+                // Processar baseado na intenção
+                let responseText = "";
+                
+                // ✅ ETAPA 1: VERIFICAR SE O USUÁRIO ESTÁ RESPONDENDO A UMA SELEÇÃO DE PRODUTO
+                const pendingProductSelection = await this.checkPendingProductSelection(contact.id, userId);
+                if (pendingProductSelection && this.isNumericSelection(text)) {
+                    responseText = await this.handleProductSelection(text, pendingProductSelection, contact, userId);
+                
+                // ✅ ETAPA 2: VERIFICAR SE O USUÁRIO ESTÁ RESPONDENDO A UMA SELEÇÃO DE PROFISSIONAL
+                } else if (await this.isProfessionalSelection(text, contact.id, userId)) {
+                    responseText = await this.handleProfessionalSelection(text, contact.id, userId);
+
+                // ✅ ETAPA 3: SE NÃO FOR SELEÇÃO, VERIFICAR A INTENÇÃO DA IA
+                } else if (analysis.intention === "scheduling") {
                     
-                    if (professionals.length === 0) {
-                        responseText = "❌ *Ops!* Nenhum profissional está disponível no momento.\n\nTente novamente mais tarde ou entre em contato diretamente.";
-                    } else if (professionals.length === 1) {
-                        responseText = await this.handleSchedulingIntent(analysis, contact, userId, professionals[0]);
-                    } else {
-                        responseText = this.formatProfessionalsList(professionals);
-                        await this.savePendingAppointment(contact.id, userId, analysis, professionals);
+                    // ✅ VERIFICAR HORÁRIO COMERCIAL ANTES DE MOSTRAR PROFISSIONAIS
+                    // Extrair data/hora da análise IA
+                    const dateTimeInfo = analysis.extracted_info || analysis.dateTime || {};
+                    const extractedDate = dateTimeInfo.date || dateTimeInfo.suggestedDate;
+                    const extractedTime = dateTimeInfo.time || dateTimeInfo.suggestedTime;
+                    
+                    if (extractedDate && extractedTime) {
+                        // Criar um objeto Date com base na data e hora extraídas
+                        const [year, month, day] = extractedDate.split("-").map(Number);
+                        const [hours, minutes] = extractedTime.split(":").map(Number);
+                        const appointmentDate = new Date(Date.UTC(year, month - 1, day, hours + 3, minutes, 0));
+                        
+                        // Verificar se o horário está dentro do horário comercial global
+                        try {
+                            console.log("🕐 Verificando horário comercial global antes de mostrar profissionais...");
+                            const availabilityResponse = await fetch(`http://localhost:3001/api/calendar/check-business-hours/${userId}`, {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify({
+                                    startDateTime: appointmentDate.toISOString()
+                                })
+                            });
+                            
+                            const availabilityResult = await availabilityResponse.json();
+                            console.log("📊 Resultado da verificação de horário comercial global:", availabilityResult);
+                            
+                            if (!availabilityResult.success || !availabilityResult.within_business_hours) {
+                                // Horário fora do expediente, retornar mensagem de erro
+                                let errorMessage = "❌ *Ops!* O horário solicitado não está disponível.\n\n";
+                                errorMessage += "🕐 *Motivo:* Fora do horário de funcionamento.\n\n";
+                                errorMessage += "💬 *Por favor, escolha outro horário ou entre em contato diretamente.*";
+                                return errorMessage;
+                            }
+                        } catch (error) {
+                            console.error("❌ Erro ao verificar horário comercial global:", error);
+                            // Em caso de erro, continuar com o fluxo normal
+                        }
                     }
-                }
+                    
+                    // ✅ NOVA LÓGICA: PRIMEIRO, VERIFICAR SE A ANÁLISE RETORNOU PRODUTOS
+                    if (analysis.products && analysis.products.length > 0) {
+                        if (analysis.products.length === 1) {
+                            // Encontrou apenas 1 produto, vamos agendar diretamente
+                            responseText = await this.processDirectScheduling(analysis.products[0], contact, userId, analysis);
+                        } else {
+                            // Encontrou múltiplos produtos, vamos mostrar as opções
+                            responseText = await this.showProductOptions(analysis.products, contact, userId, analysis);
+                        }
+                    } else {
+                        // SE NÃO ENCONTROU PRODUTOS, SEGUE O FLUXO ANTIGO DE PROFISSIONAIS
+                        const professionals = await this.getAvailableProfessionals(userId);
+                        
+                        if (professionals.length === 0) {
+                            responseText = "❌ *Ops!* Nenhum profissional está disponível no momento.\n\nTente novamente mais tarde ou entre em contato diretamente.";
+                        } else if (professionals.length === 1) {
+                            responseText = await this.handleSchedulingIntent(analysis, contact, userId, professionals[0]);
+                        } else {
+                            responseText = this.formatProfessionalsList(professionals);
+                            await this.savePendingAppointment(contact.id, userId, analysis, professionals);
+                        }
+                    }
 
             } else if (analysis.intention === "rescheduling") {
                 responseText = await this.handleReschedulingIntent(analysis, contact, userId);

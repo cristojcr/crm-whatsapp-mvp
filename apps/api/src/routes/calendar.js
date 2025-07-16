@@ -295,7 +295,8 @@ router.get("/test", (req, res) => {
             "POST /blocked-times/professional/:professionalId",
             "GET /blocked-times/global/:companyId",
             "POST /blocked-times/global/:companyId",
-            "POST /check-availability/:professionalId"
+            "POST /check-availability/:professionalId",
+            "POST /check-business-hours/:companyId"
         ]
     });
 });
@@ -1248,6 +1249,115 @@ router.post("/blocked-times/global/:companyId", authenticateUser, async (req, re
     } catch (error) {
         console.error("❌ Erro ao criar bloqueio global:", error);
         res.status(500).json({ error: "Erro interno do servidor" });
+    }
+});
+
+// POST /api/calendar/check-business-hours/:companyId - Verificar apenas horário comercial global
+router.post("/check-business-hours/:companyId", async (req, res) => {
+    try {
+        const { companyId } = req.params;
+        const { startDateTime } = req.body;
+        
+        if (!startDateTime) {
+            return res.status(400).json({ success: false, error: "startDateTime é obrigatório" });
+        }
+        
+        console.log(`🕐 Verificando horário comercial global para company_id: ${companyId}, horário: ${startDateTime}`);
+        
+        // Verificar apenas se está dentro do horário comercial global
+        const date = new Date(startDateTime);
+        const dayOfWeek = date.getDay(); // 0=Domingo, 6=Sábado
+        
+        // Extrair horário no fuso horário de Brasília
+        const timeOfDay = date.toLocaleTimeString('pt-BR', { 
+            timeZone: 'America/Sao_Paulo',
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        // Buscar horário global da empresa
+        const { data: businessHours } = await supabase
+            .from("company_business_hours")
+            .select("*")
+            .eq("company_id", companyId)
+            .eq("day_of_week", dayOfWeek)
+            .eq("is_active", true)
+            .single();
+        
+        // Se não encontrou configurações específicas, usar horário padrão
+        if (!businessHours) {
+            console.log(`⚠️ Nenhuma configuração específica encontrada, usando horário padrão`);
+            
+            // Horário comercial padrão: segunda a sexta, 8h às 18h
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            if (isWeekend) {
+                console.log(`❌ Dia não disponível: fim de semana`);
+                return res.json({ 
+                    success: true, 
+                    within_business_hours: false,
+                    reason: "weekend"
+                });
+            }
+            
+            // Verificar se está dentro do horário comercial padrão (8h às 18h)
+            if (timeOfDay < "08:00" || timeOfDay >= "18:00") {
+                console.log(`❌ Fora do horário padrão: ${timeOfDay} não está entre 08:00 e 18:00`);
+                return res.json({ 
+                    success: true, 
+                    within_business_hours: false,
+                    reason: "outside_hours"
+                });
+            }
+            
+            // Horário de almoço padrão (12h às 13h)
+            if (timeOfDay >= "12:00" && timeOfDay < "13:00") {
+                console.log(`❌ Horário de almoço padrão: ${timeOfDay} está entre 12:00 e 13:00`);
+                return res.json({ 
+                    success: true, 
+                    within_business_hours: false,
+                    reason: "lunch_break"
+                });
+            }
+            
+            console.log(`✅ Horário válido pelo padrão`);
+            return res.json({ 
+                success: true, 
+                within_business_hours: true
+            });
+        }
+
+        // Verificar se está dentro do horário de funcionamento
+        if (timeOfDay < businessHours.start_time || timeOfDay >= businessHours.end_time) {
+            console.log(`❌ Fora do horário: ${timeOfDay} não está entre ${businessHours.start_time} e ${businessHours.end_time}`);
+            return res.json({ 
+                success: true, 
+                within_business_hours: false,
+                reason: "outside_hours"
+            });
+        }
+
+        // Verificar se está no horário de almoço/pausa
+        if (businessHours.break_start_time && businessHours.break_end_time) {
+            if (timeOfDay >= businessHours.break_start_time && timeOfDay < businessHours.break_end_time) {
+                console.log(`❌ Horário de pausa: ${timeOfDay} está entre ${businessHours.break_start_time} e ${businessHours.break_end_time}`);
+                return res.json({ 
+                    success: true, 
+                    within_business_hours: false,
+                    reason: "lunch_break"
+                });
+            }
+        }
+
+        console.log(`✅ Horário válido: ${timeOfDay} está dentro do horário comercial`);
+        return res.json({ 
+            success: true, 
+            within_business_hours: true
+        });
+        
+    } catch (error) {
+        console.error("❌ Erro ao verificar horário comercial global:", error);
+        return res.status(500).json({ success: false, error: error.message });
     }
 });
 
