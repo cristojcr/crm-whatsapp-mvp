@@ -110,9 +110,50 @@ const isWithinBusinessHours = async (professionalId, companyId, dateTime) => {
         }
 
         if (!businessHours) {
-            // Se não há horário definido, considerar como disponível
-            console.log(`✅ Nenhum horário comercial definido - permitindo agendamento`);
-            return true;
+            // ✅ CORREÇÃO: Se não há horário definido, verificar se há configuração global
+            console.log(`⚠️ Nenhum horário específico encontrado, verificando configuração global...`);
+            
+            // Mapear dias da semana para nomes em inglês
+            const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const dayName = dayNames[dayOfWeek];
+            
+            // Buscar configuração global de horário comercial
+            const { data: globalConfig } = await supabase
+                .from("company_settings")
+                .select("business_hours")
+                .eq("company_id", companyId)
+                .single();
+                
+            if (globalConfig?.business_hours && globalConfig.business_hours[dayName]) {
+                const dayConfig = globalConfig.business_hours[dayName];
+                
+                // Verificar se o dia está habilitado
+                if (!dayConfig.enabled) {
+                    console.log(`❌ Dia ${dayName} não está habilitado para agendamentos`);
+                    return false;
+                }
+                
+                // Verificar horário de funcionamento
+                if (timeOfDay < dayConfig.start || timeOfDay > dayConfig.end) {
+                    console.log(`❌ Fora do horário global: ${timeOfDay} não está entre ${dayConfig.start} e ${dayConfig.end}`);
+                    return false;
+                }
+                
+                // Verificar horário de almoço
+                if (dayConfig.lunch_start && dayConfig.lunch_end) {
+                    if (timeOfDay >= dayConfig.lunch_start && timeOfDay <= dayConfig.lunch_end) {
+                        console.log(`❌ Horário de almoço global: ${timeOfDay} está entre ${dayConfig.lunch_start} e ${dayConfig.lunch_end}`);
+                        return false;
+                    }
+                }
+                
+                console.log(`✅ Horário válido pela configuração global`);
+                return true;
+            }
+            
+            // ✅ CORREÇÃO: Se não encontrou nenhuma configuração, NÃO permitir agendamento
+            console.log(`❌ Nenhuma configuração de horário encontrada - bloqueando agendamento`);
+            return false;
         }
 
         // Verificar se está dentro do horário de funcionamento
@@ -133,7 +174,8 @@ const isWithinBusinessHours = async (professionalId, companyId, dateTime) => {
         return true;
     } catch (error) {
         console.error("❌ Erro ao verificar horário comercial:", error);
-        return true; // Em caso de erro, permitir agendamento
+        // ✅ CORREÇÃO: Em caso de erro, NÃO permitir agendamento
+        return false;
     }
 };
 
