@@ -508,11 +508,13 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ NOVA FUNÇÃO: Obter informações corretas de horário atual
+    // ✅ NOVA FUNÇÃO: Obter informações corretas de horário atual (CORRIGIDA COM DEBUG)
     getCurrentTimeInfo() {
         const now = new Date();
         const hour = now.getHours();
         const minute = now.getMinutes();
+        
+        console.log(`🕐 DEBUG getCurrentTimeInfo: Hora atual = ${hour}:${minute}`);
         
         let period;
         if (hour >= 5 && hour < 12) {
@@ -523,7 +525,9 @@ class TelegramProcessor {
             period = 'noite';
         }
         
-        return {
+        console.log(`🕐 DEBUG getCurrentTimeInfo: Período determinado = ${period}`);
+        
+        const timeInfo = {
             hour: hour,
             minute: minute,
             period: period,
@@ -531,6 +535,9 @@ class TelegramProcessor {
             date: now.toLocaleDateString('pt-BR'),
             timestamp: now.toISOString()
         };
+        
+        console.log(`🕐 DEBUG getCurrentTimeInfo: Retornando:`, timeInfo);
+        return timeInfo;
     }
 
     // ✅ NOVA FUNÇÃO: Processar consultas com conversação
