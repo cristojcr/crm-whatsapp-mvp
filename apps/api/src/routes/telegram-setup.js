@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const TelegramBotCreator = require('../services/telegram-bot-creator');
-const TelegramProcessor = require('../services/telegram-processor_v2');
+const TelegramProcessor = require('../services/telegram-processor');
 const { supabase } = require('../config/supabase');
 
 const botCreator = new TelegramBotCreator();

@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 // ✅ MUDANÇA 1: Apontando para o arquivo renomeado
-const TelegramProcessor = require('../services/telegram-processor_v2.js'); 
+const TelegramProcessor = require('../services/telegram-processor.js'); 
 const { validateChannelAccess } = require('../middleware/channel-validation');
 const { checkCompliance } = require('../middleware/compliance-middleware');
 
