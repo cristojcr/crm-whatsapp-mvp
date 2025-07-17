@@ -30,21 +30,21 @@ class TelegramProcessor {
         try {
             console.log('⚙️ Buscando configuração do bot para usuário:', userId);
             
-            const { data: channelConfig, error } = await this.supabase
+            const { data, error } = await this.supabase
                 .from('user_channels')
                 .select('channel_config')
                 .eq('user_id', userId)
                 .eq('channel_type', 'telegram')
                 .single();
 
-            if (error || !channelConfig?.channel_config) {
-                console.error('❌ Bot token não encontrado:', error);
+            if (error || !data?.channel_config) {
+                console.error('❌ Erro buscando config:', error);
                 return null;
             }
 
-            const botToken = channelConfig.channel_config.bot_token;
+            const botToken = data.channel_config.bot_token;
             if (!botToken) {
-                console.error('❌ Bot token não encontrado no config');
+                console.error('❌ Bot token não encontrado no JSON');
                 return null;
             }
 
@@ -325,8 +325,7 @@ class TelegramProcessor {
             }
 
             // FLUXO DE CONVERSA GERAL COM MEMÓRIA
-            const intentionAnalyzer = require('./intention-analyzer');
-            const analysis = await intentionAnalyzer.analyzeWithProfessionalPreference(text, contact.id, userId);
+            const analysis = await this.intentionAnalyzer.analyze(text);
 
             // DETERMINAR PRÓXIMO ESTADO
             const nextState = this.conversationStates.determineNextState(
