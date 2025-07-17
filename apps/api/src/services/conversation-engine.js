@@ -10,6 +10,7 @@ class ConversationEngine {
             temperature: 0.8, // Mais criativa para conversação
             maxTokens: 400
         };
+        this.axios = require("axios");
 
     
 
