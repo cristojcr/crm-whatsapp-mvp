@@ -46,10 +46,13 @@ class ConversationEngine {
             const messages = this.breakIntoNaturalMessages(response.content);
             
             return {
-                success: true,
-                messages: messages,
-                tone: response.detected_tone || 'friendly',
-                shouldShowTyping: messages.length > 1
+                // ✅ CORREÇÃO: Envolver a resposta em um objeto 'data'
+                data: {
+                    messages: messages,
+                    tone: response.detected_tone || 'friendly',
+                    shouldShowTyping: messages.length > 1
+                },
+                success: true, // Manter se for útil para outros lugares
             };
         } catch (error) {
             console.error('❌ Erro gerando resposta:', error);
