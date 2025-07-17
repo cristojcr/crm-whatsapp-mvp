@@ -15,6 +15,7 @@ class TelegramProcessor {
         this.conversationStates = new ConversationStates();
         this.naturalTiming = new NaturalTiming();
         this.intelligentScheduling = new IntelligentScheduling();
+        this.conversationEngine = new ConversationEngine(); 
         
         // ✅ ÚNICA CRIAÇÃO DO CLIENTE SUPABASE
         this.supabase = createClient(
