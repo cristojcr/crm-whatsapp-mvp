@@ -64,41 +64,25 @@ class ConversationStates {
         try {
             console.log('💾 Atualizando estado:', conversationId, '->', newState);
 
-            // Buscar metadata atual
-            const { data: current } = await this.supabase
-                .from('conversations')
-                .select('metadata')
-                .eq('id', conversationId)
-                .single();
-
-            const currentMetadata = current?.metadata || {};
-            
-            // Atualizar metadata com novo estado
-            const updatedMetadata = {
-                ...currentMetadata,
-                conversation_state: newState,
-                state_updated_at: new Date().toISOString(),
-                state_context: additionalContext
-            };
-
+            // ✅ CORREÇÃO: Atualiza a coluna 'status' que já existe, em vez de 'metadata'
             const { error } = await this.supabase
                 .from('conversations')
                 .update({ 
-                    metadata: updatedMetadata,
-                    updated_at: new Date().toISOString()
+                    status: newState, // Usa a coluna 'status'
+                    updated_at: new Date().toISOString() 
                 })
                 .eq('id', conversationId);
 
             if (error) {
-                console.error('❌ Erro salvando estado:', error);
+                console.error('❌ Erro salvando estado na coluna status:', error);
                 return false;
             }
 
-            console.log('✅ Estado atualizado com sucesso');
+            console.log('✅ Estado atualizado com sucesso na coluna status.');
             return true;
 
         } catch (error) {
-            console.error('❌ Erro atualizando estado:', error);
+            console.error('❌ Erro geral atualizando estado:', error);
             return false;
         }
     }

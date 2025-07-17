@@ -29,33 +29,32 @@ class TelegramProcessor {
     async getUserBotConfig(userId) {
         try {
             console.log('⚙️ Buscando configuração do bot para usuário:', userId);
-    
+
             const { data, error } = await this.supabase
                 .from('user_channels')
                 .select('channel_config') // Seleciona o campo JSON
                 .eq('user_id', userId)
                 .eq('channel_type', 'telegram')
                 .single();
-    
+
             if (error) {
-                // Silenciar o erro "no rows found" que é esperado se não houver config
-                if (error.code !== 'PGRST116') {
+                if (error.code !== 'PGRST116') { // Ignora o erro "no rows found"
                     console.error('❌ Erro buscando config do canal:', error.message);
                 }
                 return null;
             }
-    
+
             // Extrai o token de dentro do JSON 'channel_config'
             const botToken = data?.channel_config?.bot_token;
-    
+
             if (!botToken) {
                 console.error('❌ Bot token não encontrado dentro de channel_config para o usuário:', userId);
                 return null;
             }
-    
+
             console.log('✅ Bot token encontrado com sucesso.');
             return { bot_token: botToken };
-    
+
         } catch (error) {
             console.error('❌ Erro geral em getUserBotConfig:', error);
             return null;
