@@ -20,6 +20,21 @@ class ConversationEngine {
         };
     }
 
+    // Enviar mensagem individual
+    async sendMessage(botToken, chatId, text, options = {}) {
+        try {
+            const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                chat_id: chatId,
+                text: text,
+                ...options
+            });
+            return response.data;
+        } catch (error) {
+            console.error('❌ Erro enviando mensagem:', error);
+            throw error;
+        }
+    }
+
     // Função principal para gerar resposta natural
     async generateNaturalResponse(intention, context, customerData, situationData = {}) {
         try {
@@ -304,20 +319,7 @@ INSTRUÇÕES:
         await new Promise(resolve => setTimeout(resolve, totalDelay));
     }
 
-    // Enviar mensagem individual
-    async sendMessage(botToken, chatId, text, options = {}) {
-        try {
-            const response = await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-                chat_id: chatId,
-                text: text,
-                ...options
-            });
-            return response.data;
-        } catch (error) {
-            console.error('❌ Erro enviando mensagem:', error);
-            throw error;
-        }
-    }
+
 }
 
 module.exports = ConversationEngine;
