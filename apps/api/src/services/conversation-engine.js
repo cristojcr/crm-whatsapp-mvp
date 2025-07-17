@@ -40,19 +40,19 @@ class ConversationEngine {
         try {
             console.log('🧠 Gerando resposta natural...');
             const prompt = this.buildConversationalPrompt(intention, context, customerData, situationData);
-            const response = await this.callDeepSeek(prompt);
+            const deepSeekResponse = await this.callDeepSeek(prompt); // Renomeado para clareza
             
-            // Quebrar resposta em múltiplas mensagens se necessário
-            const messages = this.breakIntoNaturalMessages(response.content);
+            // ✅ CORREÇÃO: Garantir que deepSeekResponse.content existe
+            const contentToProcess = deepSeekResponse?.content || ''; // Use string vazia se for undefined
+            const messages = this.breakIntoNaturalMessages(contentToProcess);
             
             return {
-                // ✅ CORREÇÃO: Envolver a resposta em um objeto 'data'
                 data: {
                     messages: messages,
-                    tone: response.detected_tone || 'friendly',
+                    tone: deepSeekResponse?.detected_tone || 'friendly',
                     shouldShowTyping: messages.length > 1
                 },
-                success: true, // Manter se for útil para outros lugares
+                success: true,
             };
         } catch (error) {
             console.error('❌ Erro gerando resposta:', error);
