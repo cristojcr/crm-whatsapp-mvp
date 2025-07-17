@@ -1,5 +1,5 @@
 const axios = require("axios");
-const supabaseAdmin = require("../config/supabaseAdmin");
+
 const ConversationMemory = require('./conversation-memory');
 const ConversationEngine = require('./conversation-engine');
 const CustomerContext = require("./customer-context");
@@ -10,15 +10,13 @@ const IntelligentScheduling = require('./intelligent-scheduling');
 
 class TelegramProcessor {
     constructor() {
-        // ✅ CORREÇÃO: A importação do intention-analyzer foi movida para dentro dos métodos que a usam
-        // para garantir que a versão mais recente seja carregada e evitar erros de escopo.
         this.conversationContextManager = require('./conversation-context-manager');
-        
         this.conversationMemory = new ConversationMemory();
         this.conversationStates = new ConversationStates();
         this.naturalTiming = new NaturalTiming();
         this.intelligentScheduling = new IntelligentScheduling();
         
+        // ✅ ÚNICA CRIAÇÃO DO CLIENTE SUPABASE
         this.supabase = createClient(
             process.env.SUPABASE_URL,
             process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -32,24 +30,22 @@ class TelegramProcessor {
 
             const { data, error } = await this.supabase
                 .from('user_channels')
-                .select('channel_config') // 1. Seleciona a coluna JSON correta
+                .select('channel_config')
                 .eq('user_id', userId)
                 .eq('channel_type', 'telegram')
                 .single();
 
             if (error) {
-                // Ignora o erro "no rows found" que é normal se não houver config
-                if (error.code !== 'PGRST116') { 
+                if (error.code !== 'PGRST116') {
                     console.error('❌ Erro buscando config do canal:', error.message);
                 }
                 return null;
             }
 
-            // 2. Extrai o token de DENTRO do objeto JSON 'channel_config'
             const botToken = data?.channel_config?.bot_token;
 
             if (!botToken) {
-                console.error('❌ Bot token não encontrado dentro do JSON channel_config para o usuário:', userId);
+                console.error('❌ Bot token não encontrado dentro de channel_config');
                 return null;
             }
 
@@ -261,7 +257,7 @@ class TelegramProcessor {
                                 userId, schedulingAnalysis.dateTimeInfo
                             );
                         } else {
-                            return await this.requestMissingInfo(schedulingAnalysis.dateTimeInfo);
+                            return await this.intelligentScheduling.requestMissingInfo(schedulingAnalysis.dateTimeInfo);
                         }
                     }
                     break;
@@ -366,43 +362,55 @@ class TelegramProcessor {
         }
     }
 
-    async saveMessagesToDatabase(messages, conversationId, userId, senderType) {
+    async saveMessage(messageData) {
         try {
-            for (const message of messages) {
-                await this.supabase
-                    .from('messages')
-                    .insert({
-                        conversation_id: conversationId,
-                        user_id: userId,
-                        content: message,
-                        sender_type: senderType,
-                        channel_type: 'telegram',
-                        created_at: new Date().toISOString()
-                    });
-            }
+            console.log('💾 Salvando mensagem...');
+
+            // USA A INSTÂNCIA CENTRALIZADA 'this.supabase'
+            const { data, error } = await this.supabase
+                .from('messages')
+                .insert(messageData) // Removido o array desnecessário [messageData]
+                .select()
+                .single();
+
+            if (error) throw error;
+            
+            console.log('✅ Mensagem salva:', data.id);
+            return data;
+            
         } catch (error) {
-            console.error('❌ Erro salvando mensagens:', error);
+            console.error('❌ Erro salvando mensagem:', error);
+            return null;
         }
     }
 
     async sendNaturalResponse(response, userId, chatId, conversation) {
         try {
-            // BUSCAR CONFIGURAÇÃO DO BOT
             const botConfig = await this.getUserBotConfig(userId);
             if (!botConfig?.bot_token) {
-                console.error('❌ Bot token não encontrado');
+                console.error('❌ Bot token não encontrado, não é possível enviar resposta.');
                 return false;
             }
 
-            // ENVIAR COM TIMING NATURAL
-            await this.naturalTiming.sendConversationalMessages(
-                response.messages,
-                botConfig.bot_token,
-                chatId
-            );
+            // 1. Obter o plano de envio do NaturalTiming
+            const messagePlan = await this.naturalTiming.planConversationalMessages(response.messages);
 
-            // SALVAR MENSAGENS NO BANCO
-            await this.saveMessagesToDatabase(response.messages, conversation.id, userId, 'ai');
+            // 2. Executar o plano de envio
+            for (const step of messagePlan) {
+                if (step.type === 'typing') {
+                    await this.sendTypingAction(botConfig.bot_token, chatId);
+                    await new Promise(resolve => setTimeout(resolve, step.duration));
+                } else if (step.type === 'message') {
+                    // Usar o método de envio do ConversationEngine ou um próprio
+                    const conversationEngine = require('./conversation-engine');
+                    await conversationEngine.sendMessage(botConfig.bot_token, chatId, step.content, { parse_mode: 'Markdown' });
+                } else if (step.type === 'pause') {
+                    await new Promise(resolve => setTimeout(resolve, step.duration));
+                }
+            }
+
+            // 3. Salvar as mensagens enviadas no banco
+            await this.saveMessagesToDatabase(response.messages, conversation.id, userId, 'assistant');
 
             return true;
 
@@ -1235,7 +1243,7 @@ class TelegramProcessor {
                 created_at: new Date().toISOString()
             };
             
-            const { data: appointment, error } = await supabaseAdmin
+            const { data: appointment, error } = await this.supabase 
                 .from("appointments")
                 .insert(appointmentData)
                 .select()
@@ -1331,7 +1339,7 @@ class TelegramProcessor {
             console.log(`🕐 Verificando horário comercial para usuário ${userId}, data: ${date}, hora: ${time}`);
             
             // Primeiro, verificar se há configuração de horário comercial global para a empresa
-            const { data: companyBusinessHours, error: companyError } = await supabaseAdmin
+            const { data: companyBusinessHours, error: companyError } = await this.supabase
                 .from('company_business_hours')
                 .select('*')
                 .eq('company_id', userId) // Assumindo que userId é o company_id
@@ -1345,7 +1353,7 @@ class TelegramProcessor {
             if (!companyBusinessHours || companyBusinessHours.length === 0) {
                 console.log('⚠️ Nenhuma configuração de horário comercial da empresa encontrada, verificando user_settings...');
                 
-                const { data: userSettings, error: userError } = await supabaseAdmin
+                const { data: userSettings, error: userError } = await this.supabase
                     .from('user_settings')
                     .select('business_hours_start, business_hours_end, business_days')
                     .eq('user_id', userId)
@@ -1534,7 +1542,7 @@ class TelegramProcessor {
     // ✅ FUNÇÃO AUXILIAR: Buscar agendamentos do cliente
     async getCustomerAppointments(contactId, userId) {
         try {
-            const { data: appointments, error } = await supabaseAdmin
+            const { data: appointments, error } = await this.supabase
                 .from('appointments')
                 .select(`
                     *,
@@ -1766,7 +1774,7 @@ class TelegramProcessor {
     // ✅ FUNÇÃO AUXILIAR: Obter contato por ID
     async getContactById(contactId) {
         try {
-            const { data, error } = await supabaseAdmin
+            const { data, error } = await this.supabase
                 .from('contacts')
                 .select('*')
                 .eq('id', contactId)
@@ -1783,7 +1791,7 @@ class TelegramProcessor {
     // ===== MÉTODOS ORIGINAIS MANTIDOS =====
 
     async findOrCreateContact(from, userId) {
-        const { data: existingContact, error: searchError } = await supabaseAdmin
+        const { data: existingContact, error: searchError } = await this.supabase
             .from("contacts")
             .select("*")
             .eq("telegram_id", from.id.toString())
@@ -1794,7 +1802,7 @@ class TelegramProcessor {
             return existingContact;
         }
 
-        const { data: newContact, error: createError } = await supabaseAdmin
+        const { data: newContact, error: createError } = await this.supabase
             .from("contacts")
             .insert({
                 name: from.first_name + (from.last_name ? ` ${from.last_name}` : ""),
@@ -1811,7 +1819,7 @@ class TelegramProcessor {
     }
 
     async findOrCreateConversation(contactId, userId, channelType) {
-        const { data: existingConversation, error: searchError } = await supabaseAdmin
+        const { data: existingConversation, error: searchError } = await this.supabase
             .from("conversations")
             .select("*")
             .eq("contact_id", contactId)
@@ -1823,7 +1831,7 @@ class TelegramProcessor {
             return existingConversation;
         }
 
-        const { data: newConversation, error: createError } = await supabaseAdmin
+        const { data: newConversation, error: createError } = await this.supabase
             .from("conversations")
             .insert({
                 contact_id: contactId,
@@ -1839,7 +1847,7 @@ class TelegramProcessor {
     }
 
     async saveMessage(messageData) {
-        const { data, error } = await supabaseAdmin
+        const { data, error } = await this.supabase
             .from("messages")
             .insert(messageData)
             .select()
@@ -1906,7 +1914,7 @@ class TelegramProcessor {
 
     async getAvailableProfessionals(userId, date, time) {
         try {
-            const { data: professionals, error } = await supabaseAdmin
+            const { data: professionals, error } = await this.supabase
                 .from('professionals')
                 .select('*')
                 .eq('user_id', userId)
@@ -1922,7 +1930,7 @@ class TelegramProcessor {
 
     async getProfessionalsForProduct(productId, userId) {
         try {
-            const { data: professionals, error } = await supabaseAdmin
+            const { data: professionals, error } = await this.supabase
                 .from('professionals')
                 .select('*')
                 .eq('user_id', userId)
@@ -2212,64 +2220,7 @@ class TelegramProcessor {
         }
     }
 
-    // ✅ FUNÇÃO AUXILIAR: Salvar mensagem (manter lógica existente)
-    async saveMessage(messageData) {
-        try {
-            // TODO: Usar a lógica existente do seu telegram-processor.js
-            console.log('💾 Salvando mensagem...');
-            
-            const { createClient } = require('@supabase/supabase-js');
-            const supabaseAdmin = createClient(
-                process.env.SUPABASE_URL,
-                process.env.SUPABASE_SERVICE_ROLE_KEY
-            );
 
-            const { data, error } = await supabaseAdmin
-                .from('messages')
-                .insert([messageData])
-                .select()
-                .single();
-
-            if (error) throw error;
-            
-            console.log('✅ Mensagem salva:', data.id);
-            return data;
-            
-        } catch (error) {
-            console.error('❌ Erro salvando mensagem:', error);
-            return null;
-        }
-    }
-
-    // ✅ FUNÇÃO AUXILIAR: Buscar config do bot (manter lógica existente)
-    async getUserBotConfig(userId) {
-        try {
-            // TODO: Usar a lógica existente do seu telegram-processor.js
-            console.log('⚙️ Buscando configuração do bot...');
-            
-            const { createClient } = require('@supabase/supabase-js');
-            const supabaseAdmin = createClient(
-                process.env.SUPABASE_URL,
-                process.env.SUPABASE_SERVICE_ROLE_KEY
-            );
-
-            const { data, error } = await supabaseAdmin
-                .from('user_channels')
-                .select('bot_token, is_active')
-                .eq('user_id', userId)
-                .eq('channel_type', 'telegram')
-                .eq('is_active', true)
-                .single();
-
-            if (error) throw error;
-            
-            return data;
-            
-        } catch (error) {
-            console.error('❌ Erro buscando config do bot:', error);
-            return null;
-        }
-    }
 }
 
 module.exports = TelegramProcessor;
