@@ -11,6 +11,20 @@ class NaturalTiming {
         this.baseUrl = 'https://api.telegram.org/bot';
     }
 
+    calculateTypingDuration(message) {
+        const baseDelay = 500; // 0.5 segundos
+        const charsPerMs = 50; // 50ms por caractere
+        const maxDelay = 3000; // Máximo de 3 segundos
+        return Math.min(message.length * charsPerMs, maxDelay) + baseDelay;
+    }
+
+    // E também o calculatePauseBetweenMessages, se não estiver lá
+    calculatePauseBetweenMessages() {
+        const minPause = 500; // 0.5 segundos
+        const maxPause = 1500; // 1.5 segundos
+        return Math.floor(Math.random() * (maxPause - minPause + 1)) + minPause;
+    }
+
     async planConversationalMessages(messages) {
         console.log("⏱️ Planejando envio natural de:", messages.length, "mensagens");
         const plan = [];
