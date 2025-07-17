@@ -10,10 +10,10 @@ const IntelligentScheduling = require('./intelligent-scheduling');
 
 class TelegramProcessor {
     constructor() {
-        this.intentionAnalyzer = require('./intention-analyzer');
+        // ✅ CORREÇÃO: A importação do intention-analyzer foi movida para dentro dos métodos que a usam
+        // para garantir que a versão mais recente seja carregada e evitar erros de escopo.
         this.conversationContextManager = require('./conversation-context-manager');
         
-        // ✅ NOVOS SERVIÇOS INTEGRADOS
         this.conversationMemory = new ConversationMemory();
         this.conversationStates = new ConversationStates();
         this.naturalTiming = new NaturalTiming();
@@ -29,29 +29,35 @@ class TelegramProcessor {
     async getUserBotConfig(userId) {
         try {
             console.log('⚙️ Buscando configuração do bot para usuário:', userId);
-            
+    
             const { data, error } = await this.supabase
                 .from('user_channels')
-                .select('channel_config')
+                .select('channel_config') // Seleciona o campo JSON
                 .eq('user_id', userId)
                 .eq('channel_type', 'telegram')
                 .single();
-
-            if (error || !data?.channel_config) {
-                console.error('❌ Erro buscando config:', error);
+    
+            if (error) {
+                // Silenciar o erro "no rows found" que é esperado se não houver config
+                if (error.code !== 'PGRST116') {
+                    console.error('❌ Erro buscando config do canal:', error.message);
+                }
                 return null;
             }
-
-            const botToken = data.channel_config.bot_token;
+    
+            // Extrai o token de dentro do JSON 'channel_config'
+            const botToken = data?.channel_config?.bot_token;
+    
             if (!botToken) {
-                console.error('❌ Bot token não encontrado no JSON');
+                console.error('❌ Bot token não encontrado dentro de channel_config para o usuário:', userId);
                 return null;
             }
-
-            console.log('✅ Bot token encontrado');
+    
+            console.log('✅ Bot token encontrado com sucesso.');
             return { bot_token: botToken };
+    
         } catch (error) {
-            console.error('❌ Erro:', error);
+            console.error('❌ Erro geral em getUserBotConfig:', error);
             return null;
         }
     }
@@ -316,6 +322,7 @@ class TelegramProcessor {
     async processWithContextAndState(text, contact, conversation, userId, memoryContext, currentState, schedulingAnalysis) {
         try {
             console.log('🧠 Processando com contexto completo');
+            const intentionAnalyzer = require('./intention-analyzer'); // Carrega o módulo aqui
 
             // FLUXO DE AGENDAMENTO INTELIGENTE
             if (schedulingAnalysis.hasIntent || currentState.includes('scheduling') || currentState.includes('collecting')) {
@@ -325,7 +332,10 @@ class TelegramProcessor {
             }
 
             // FLUXO DE CONVERSA GERAL COM MEMÓRIA
-            const analysis = await this.intentionAnalyzer.analyze(text);
+            // ✅ CORREÇÃO APLICADA AQUI
+            const analysis = await intentionAnalyzer.analyzeWithHistoricalContext(
+                text, contact.id, userId, memoryContext
+            );
 
             // DETERMINAR PRÓXIMO ESTADO
             const nextState = this.conversationStates.determineNextState(
