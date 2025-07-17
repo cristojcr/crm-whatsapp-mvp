@@ -12,62 +12,25 @@ class NaturalTiming {
     }
 
     // ✅ ENVIAR MÚLTIPLAS MENSAGENS COM TIMING NATURAL
-    async sendConversationalMessages(messages, botToken, chatId, options = {}) {
-        try {
-            console.log('💬 Enviando conversa natural:', messages.length, 'mensagens');
-
-            if (!Array.isArray(messages)) {
-                messages = [messages];
-            }
-
-            for (let i = 0; i < messages.length; i++) {
-                const message = messages[i];
-                
-                // 1. Mostrar "digitando..." antes de cada mensagem
-                await this.sendTypingAction(botToken, chatId);
-                
-                // 2. Pausa natural baseada no tamanho da mensagem
-                const typingDuration = this.calculateTypingDuration(message);
-                await this.sleep(typingDuration);
-                
-                // 3. Enviar a mensagem
-                await this.sendMessage(botToken, chatId, message, options);
-                
-                // 4. Pausa entre mensagens (se não for a última)
-                if (i < messages.length - 1) {
-                    const pauseBetween = this.calculatePauseBetweenMessages();
-                    await this.sleep(pauseBetween);
-                }
-            }
-
-            console.log('✅ Conversa natural enviada com sucesso');
-            return true;
-
-        } catch (error) {
-            console.error('❌ Erro enviando conversa natural:', error);
-            return false;
+    async planConversationalMessages(messages) {
+        console.log('⏱️ Planejando envio natural de:', messages.length, 'mensagens');
+        const plan = [];
+        if (!Array.isArray(messages)) {
+            messages = [messages];
         }
-    }
 
-    // ✅ MOSTRAR "DIGITANDO..."
-    async sendTypingAction(botToken, chatId) {
-        try {
-            const response = await fetch(`${this.baseUrl}${botToken}/sendChatAction`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: chatId,
-                    action: 'typing'
-                })
-            });
+        for (let i = 0; i < messages.length; i++) {
+            const message = messages[i];
+            const typingDuration = this.calculateTypingDuration(message);
+            plan.push({ type: 'typing', duration: typingDuration });
+            plan.push({ type: 'message', content: message });
 
-            if (!response.ok) {
-                console.warn('⚠️ Falha ao enviar typing action');
+            if (i < messages.length - 1) {
+                const pauseBetween = this.calculatePauseBetweenMessages();
+                plan.push({ type: 'pause', duration: pauseBetween });
             }
-
-        } catch (error) {
-            console.warn('⚠️ Erro enviando typing action:', error.message);
         }
+        return plan;
     }
 
     // ✅ CALCULAR DURAÇÃO DO "DIGITANDO" BASEADO NO TEXTO
@@ -146,34 +109,6 @@ class NaturalTiming {
         return response;
     }
 
-    // ✅ ENVIAR MENSAGEM ÚNICA
-    async sendMessage(botToken, chatId, text, options = {}) {
-        try {
-            const response = await fetch(`${this.baseUrl}${botToken}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: chatId,
-                    text: text,
-                    parse_mode: options.parse_mode || 'HTML',
-                    reply_markup: options.reply_markup || undefined
-                })
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                console.error('❌ Erro enviando mensagem:', result);
-                return false;
-            }
-
-            return result;
-
-        } catch (error) {
-            console.error('❌ Erro na requisição de mensagem:', error);
-            return false;
-        }
-    }
 
     // ✅ PAUSA (SLEEP)
     sleep(ms) {

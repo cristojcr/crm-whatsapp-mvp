@@ -1,4 +1,5 @@
 // Debug e carregamento de variáveis PRIMEIRO
+const path = require('path');
 console.log('📂 Carregando variáveis de ambiente...');
 
 // Carregar .env.local da pasta atual
@@ -14,9 +15,28 @@ console.log('ANON Key:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'OK' : 'MIS
 console.log('SERVICE Key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'OK' : 'MISSING');
 console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'OK' : 'MISSING');
 console.log('🔧 ARQUIVO PARTNERS.JS CARREGADO COM SUCESSO!');
+// =================================================================
+// 💣 "BOMBA ATÔMICA" ANTI-CACHE - Adicionar no topo do server.js
+// =================================================================
+
+// Limpa o cache de todos os módulos dentro da pasta 'services'
+// Isso força o Node.js a reler os arquivos do disco em vez de usar a memória.
+try {
+    const servicesPath = path.join(__dirname, 'services');
+    console.log(`🧹 Limpando cache para todos os módulos em: ${servicesPath}`);
+    
+    Object.keys(require.cache).forEach(function(key) {
+        if (key.startsWith(servicesPath)) {
+            console.log(`   -> Limpando cache de: ${path.basename(key)}`);
+            delete require.cache[key];
+        }
+    });
+    console.log('✅ Cache da pasta services limpo com sucesso.');
+} catch (e) {
+    console.error('⚠️ Erro ao tentar limpar o cache de módulos:', e);
+}
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 

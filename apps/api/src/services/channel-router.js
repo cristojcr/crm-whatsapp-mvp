@@ -1,6 +1,6 @@
 // src/services/channel-router.js
 const InstagramProcessor = require('./instagram-processor');
-const TelegramProcessor = require('./telegram-processor');
+const TelegramProcessor = require('./telegram-processor_v2');
 const { supabase } = require('../config/supabase');
 
 class ChannelRouter {
