@@ -413,6 +413,8 @@ class TelegramProcessor {
     // Processar mensagens (adaptado para multi-tenant com conversação natural)
     async processMessage(message, userId) {
         try {
+            console.log('🐛 DEBUG - userId recebido:', userId);
+            console.log('🐛 DEBUG - message.from:', message.from);
             console.log('📱 Processando mensagem Telegram:', message.text);
             
             const text = message.text;
@@ -422,8 +424,16 @@ class TelegramProcessor {
             // 1. BUSCAR/CRIAR CONTATO E CONVERSA
             const { contact, conversation } = await this.getOrCreateContactAndConversation(message, userId);
             
+            // ADICIONE ESTES LOGS LOGO DEPOIS:
+            console.log('🐛 DEBUG - contact:', contact);
+            console.log('🐛 DEBUG - conversation:', conversation);
+            console.log('🐛 DEBUG - contact.id:', contact?.id);
+            console.log('🐛 DEBUG - conversation.id:', conversation?.id);
+
             if (!contact || !conversation) {
                 console.error('❌ Falha ao obter contato/conversa');
+                console.error('❌ contact é:', contact);
+                console.error('❌ conversation é:', conversation);
                 return await this.sendErrorMessage(chatId, userId);
             }
 
