@@ -20,6 +20,29 @@ class ConversationEngine {
         };
     }
 
+    async callDeepSeek(prompt) {
+        console.log("🤖 Chamando DeepSeek com prompt:", prompt);
+        try {
+            const response = await axios.post(this.deepseekConfig.apiUrl, {
+                model: this.deepseekConfig.model,
+                messages: [{ role: "user", content: prompt }],
+                temperature: this.deepseekConfig.temperature,
+                max_tokens: this.deepseekConfig.maxTokens,
+            }, {
+                headers: {
+                    "Authorization": `Bearer ${this.deepseekConfig.apiKey}`,
+                    "Content-Type": "application/json",
+                },
+            });
+
+            console.log("✅ Resposta DeepSeek recebida.");
+            return response.data.choices[0].message;
+        } catch (error) {
+            console.error("❌ Erro ao chamar DeepSeek:", error.response?.data || error.message);
+            throw error;
+        }
+    }
+
     // Enviar mensagem individual
     async sendMessage(botToken, chatId, text, options = {}) {
         try {
