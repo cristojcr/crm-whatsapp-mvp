@@ -204,14 +204,27 @@ class TelegramProcessor {
         try {
             console.log('📱 Processando update Telegram...');
             console.log('📋 Body recebido:', JSON.stringify(req.body, null, 2));
+            
+            const update = req.body; // ✅ DEFINIR update
+            const userId = req.params.userId; // ✅ EXTRAIR userId
+            
             console.log('🐛 DEBUG - update completo:', JSON.stringify(update, null, 2));
             console.log('🐛 DEBUG - update.message:', update.message);
             console.log('🐛 DEBUG - update.message?.from:', update.message?.from);
+            console.log('🐛 DEBUG - userId extraído:', userId);
             
-            const result = await this.processMessage(req, res);
-            
-            if (res && !res.headersSent) {
-                return res.status(200).json({ status: 'success', result });
+            if (update.message) {
+                // ✅ CHAMAR CORRETAMENTE processMessage
+                const result = await this.processMessage(update.message, userId);
+                
+                if (res && !res.headersSent) {
+                    return res.status(200).json({ status: 'success', result });
+                }
+            } else {
+                console.log('⚠️ Update sem mensagem, ignorando');
+                if (res && !res.headersSent) {
+                    return res.status(200).json({ status: 'ignored' });
+                }
             }
             
         } catch (error) {
