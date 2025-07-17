@@ -27,54 +27,37 @@ class TelegramProcessor {
 
     // Buscar configuração do bot por usuário
     async getUserBotConfig(userId) {
-    try {
-        console.log('⚙️ Buscando configuração do bot para usuário:', userId);
-        
-        const { createClient } = require('@supabase/supabase-js');
-        const supabaseAdmin = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-        );
+        try {
+            console.log('⚙️ Buscando configuração do bot para usuário:', userId);
+            
+            // BUSCAR em user_channels com channel_config JSON
+            const { data: channelConfig, error } = await this.supabase
+                .from('user_channels')
+                .select('channel_config')
+                .eq('user_id', userId)
+                .eq('channel_type', 'telegram')
+                .single();
 
-        // BUSCAR bot_token na tabela user_channels campo channel_config
-        const { data: channelConfig, error } = await supabaseAdmin
-            .from('user_channels')
-            .select('channel_config, is_active')
-            .eq('user_id', userId)
-            .eq('channel_type', 'telegram')
-            .eq('is_active', true)
-            .single();
+            if (error || !channelConfig?.channel_config) {
+                console.error('❌ Bot token não encontrado');
+                return null;
+            }
 
-        if (error) {
-            console.error('❌ Erro buscando configuração do canal:', error);
+            const config = channelConfig.channel_config;
+            const botToken = config.bot_token || config.token;
+
+            if (!botToken) {
+                console.error('❌ Bot token não encontrado na configuração');
+                return null;
+            }
+
+            return { bot_token: botToken };
+            
+        } catch (error) {
+            console.error('❌ Erro buscando config do bot:', error);
             return null;
         }
-
-        if (!channelConfig?.channel_config) {
-            console.error('❌ Configuração do canal não encontrada');
-            return null;
-        }
-
-        // EXTRAIR bot_token do JSON channel_config
-        const config = channelConfig.channel_config;
-        const botToken = config.bot_token || config.token || config.telegram_bot_token;
-
-        if (!botToken) {
-            console.error('❌ Bot token não encontrado na configuração:', config);
-            return null;
-        }
-
-        console.log('✅ Configuração do bot encontrada');
-        return {
-            bot_token: botToken,
-            is_active: channelConfig.is_active
-        };
-        
-    } catch (error) {
-        console.error('❌ Erro geral buscando config do bot:', error);
-        return null;
     }
-}
 
     // ✅ NOVA FUNÇÃO: Enviar ação de "digitando"
     async sendTypingAction(botToken, chatId) {
@@ -345,7 +328,7 @@ class TelegramProcessor {
             }
 
             // FLUXO DE CONVERSA GERAL COM MEMÓRIA
-            const analysis = await this.intentionAnalyzer.analyzeWithContext(text, contact.id, userId, {
+            const analysis = await this.intentionAnalyzer.analyze(text, contact.id, userId);
                 conversationHistory: memoryContext.context,
                 customerStage: memoryContext.relationshipStage,
                 shouldGreet: memoryContext.shouldGreet && !memoryContext.isNewCustomer
@@ -2110,7 +2093,6 @@ class TelegramProcessor {
                 .eq('user_id', userId)
                 .eq('contact_id', contact.id)
                 .eq('channel_type', 'telegram')
-                .eq('is_active', true)
                 .single();
 
             let conversation;
@@ -2126,7 +2108,6 @@ class TelegramProcessor {
                         contact_id: contact.id,
                         channel_type: 'telegram',
                         channel_conversation_id: chatId,
-                        is_active: true,
                         metadata: {
                             chat_data: message.chat,
                             conversation_state: 'initial'
