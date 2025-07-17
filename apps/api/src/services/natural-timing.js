@@ -11,6 +11,27 @@ class NaturalTiming {
         this.baseUrl = 'https://api.telegram.org/bot';
     }
 
+    async planConversationalMessages(messages) {
+        console.log("⏱️ Planejando envio natural de:", messages.length, "mensagens");
+        const plan = [];
+        if (!Array.isArray(messages)) {
+            messages = [messages];
+        }
+
+        for (let i = 0; i < messages.length; i++) {
+            const message = messages[i];
+            const typingDuration = this.calculateTypingDuration(message);
+            plan.push({ type: "typing", duration: typingDuration });
+            plan.push({ type: "message", content: message });
+
+            if (i < messages.length - 1) {
+                const pauseBetween = this.calculatePauseBetweenMessages();
+                plan.push({ type: "pause", duration: pauseBetween });
+            }
+        }
+        return plan;
+    }
+
     // ✅ ENVIAR MÚLTIPLAS MENSAGENS COM TIMING NATURAL
     async planConversationalMessages(messages) {
         console.log('⏱️ Planejando envio natural de:', messages.length, 'mensagens');
