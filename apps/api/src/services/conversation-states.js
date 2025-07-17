@@ -1,258 +1,275 @@
-const { createClient } = require('@supabase/supabase-js');
+// ===============================================
+// 🔄 CORREÇÃO 2: ESTADOS CONVERSACIONAIS
+// ===============================================
+// 📍 ARQUIVO: apps/api/src/services/conversation-states.js
+// 🎯 OBJETIVO: Manter contexto da conversa entre mensagens
 
-// 🗂️ ESTADOS POSSÍVEIS DA CONVERSA
-const CONVERSATION_STATES = {
-    INITIAL: 'initial',                    // Primeira interação
-    GREETING: 'greeting',                  // Cumprimentando
-    SCHEDULING_INTENT: 'scheduling_intent', // Quer agendar
-    SELECTING_SERVICE: 'selecting_service', // Escolhendo serviço
-    SELECTING_PROFESSIONAL: 'selecting_professional', // Escolhendo profissional
-    SELECTING_DATE: 'selecting_date',      // Escolhendo data
-    SELECTING_TIME: 'selecting_time',      // Escolhendo horário
-    CONFIRMING_APPOINTMENT: 'confirming_appointment', // Confirmando agendamento
-    APPOINTMENT_CONFIRMED: 'appointment_confirmed', // Agendamento confirmado
-    RESCHEDULING: 'rescheduling',          // Reagendando
-    CANCELING: 'canceling',                // Cancelando
-    GENERAL_INQUIRY: 'general_inquiry',    // Pergunta geral
-    WAITING_RESPONSE: 'waiting_response'   // Aguardando resposta específica
-};
+const { createClient } = require('@supabase/supabase-js');
 
 class ConversationStates {
     constructor() {
-        this.supabaseAdmin = createClient(
+        this.supabase = createClient(
             process.env.SUPABASE_URL,
             process.env.SUPABASE_SERVICE_ROLE_KEY
         );
+        
+        // Estados possíveis da conversa
+        this.STATES = {
+            INITIAL: 'initial',
+            GREETING: 'greeting',
+            SCHEDULING_INTENT: 'scheduling_intent',
+            COLLECTING_DATE: 'collecting_date',
+            COLLECTING_TIME: 'collecting_time',
+            SELECTING_PROFESSIONAL: 'selecting_professional',
+            CONFIRMING_APPOINTMENT: 'confirming_appointment',
+            APPOINTMENT_CONFIRMED: 'appointment_confirmed',
+            CANCELLING: 'cancelling',
+            VIEWING_APPOINTMENTS: 'viewing_appointments',
+            GENERAL_CONVERSATION: 'general_conversation',
+            NEED_HELP: 'need_help'
+        };
     }
 
-    // 📥 BUSCAR ESTADO ATUAL DA CONVERSA
+    // ✅ OBTER ESTADO ATUAL DA CONVERSA
     async getCurrentState(conversationId) {
         try {
             console.log('🔍 Buscando estado atual da conversa:', conversationId);
-            
-            const { data: conversation } = await this.supabaseAdmin
+
+            // Buscar na tabela conversations - se tiver campo state
+            const { data: conversation, error } = await this.supabase
                 .from('conversations')
-                .select('metadata')
+                .select('id, metadata')
                 .eq('id', conversationId)
                 .single();
 
-            const currentState = conversation?.metadata?.conversation_state || CONVERSATION_STATES.INITIAL;
-            const stateData = conversation?.metadata?.state_data || {};
+            if (error || !conversation) {
+                console.log('📊 Estado não encontrado, usando inicial');
+                return this.STATES.INITIAL;
+            }
+
+            // Extrair estado do metadata
+            const state = conversation.metadata?.conversation_state || this.STATES.INITIAL;
+            console.log('📊 Estado atual encontrado:', state);
             
-            console.log('📊 Estado atual:', currentState);
-            return { state: currentState, data: stateData };
-            
+            return state;
+
         } catch (error) {
             console.error('❌ Erro buscando estado:', error);
-            return { state: CONVERSATION_STATES.INITIAL, data: {} };
+            return this.STATES.INITIAL;
         }
     }
 
-    // 💾 SALVAR NOVO ESTADO DA CONVERSA
-    async setState(conversationId, newState, stateData = {}) {
+    // ✅ ATUALIZAR ESTADO DA CONVERSA
+    async updateState(conversationId, newState, additionalContext = {}) {
         try {
-            console.log('💾 Salvando novo estado:', newState);
-            
+            console.log('💾 Atualizando estado:', conversationId, '->', newState);
+
             // Buscar metadata atual
-            const { data: conversation } = await this.supabaseAdmin
+            const { data: current } = await this.supabase
                 .from('conversations')
                 .select('metadata')
                 .eq('id', conversationId)
                 .single();
 
-            const currentMetadata = conversation?.metadata || {};
+            const currentMetadata = current?.metadata || {};
             
-            // Atualizar com novo estado
+            // Atualizar metadata com novo estado
             const updatedMetadata = {
                 ...currentMetadata,
                 conversation_state: newState,
-                state_data: stateData,
-                state_updated_at: new Date().toISOString()
+                state_updated_at: new Date().toISOString(),
+                state_context: additionalContext
             };
 
-            const { error } = await this.supabaseAdmin
+            const { error } = await this.supabase
                 .from('conversations')
-                .update({ metadata: updatedMetadata })
+                .update({ 
+                    metadata: updatedMetadata,
+                    updated_at: new Date().toISOString()
+                })
                 .eq('id', conversationId);
 
-            if (error) throw error;
-            
-            console.log('✅ Estado salvo com sucesso');
+            if (error) {
+                console.error('❌ Erro salvando estado:', error);
+                return false;
+            }
+
+            console.log('✅ Estado atualizado com sucesso');
             return true;
-            
+
         } catch (error) {
-            console.error('❌ Erro salvando estado:', error);
+            console.error('❌ Erro atualizando estado:', error);
             return false;
         }
     }
 
-    // 🎯 DETERMINAR PRÓXIMO ESTADO BASEADO NA MENSAGEM
-    async determineNextState(currentState, messageText, analysisResult) {
-        const lowerMessage = messageText.toLowerCase().trim();
-        
-        console.log('🎯 Determinando próximo estado...');
-        console.log('📍 Estado atual:', currentState);
-        console.log('💬 Mensagem:', lowerMessage);
+    // ✅ DETERMINAR PRÓXIMO ESTADO BASEADO NA MENSAGEM
+    determineNextState(currentState, message, analysis) {
+        const text = message.toLowerCase();
+        const intention = analysis?.intention;
 
-        // MÁQUINA DE ESTADOS
+        console.log('🎯 Determinando próximo estado:', {
+            atual: currentState,
+            intenção: intention,
+            mensagem: text.substring(0, 50)
+        });
+
         switch (currentState) {
-            case CONVERSATION_STATES.INITIAL:
-                // Primeira mensagem
-                if (this.isGreeting(lowerMessage)) {
-                    return CONVERSATION_STATES.GREETING;
-                } else if (this.isSchedulingIntent(lowerMessage)) {
-                    return CONVERSATION_STATES.SCHEDULING_INTENT;
+            case this.STATES.INITIAL:
+                if (this.isGreeting(text)) {
+                    return this.STATES.GREETING;
+                } else if (intention === 'scheduling') {
+                    return this.STATES.SCHEDULING_INTENT;
                 } else {
-                    return CONVERSATION_STATES.GENERAL_INQUIRY;
+                    return this.STATES.GENERAL_CONVERSATION;
                 }
 
-            case CONVERSATION_STATES.GREETING:
-                // Após cumprimento
-                if (this.isSchedulingIntent(lowerMessage)) {
-                    return CONVERSATION_STATES.SCHEDULING_INTENT;
+            case this.STATES.GREETING:
+                if (intention === 'scheduling') {
+                    return this.STATES.SCHEDULING_INTENT;
+                } else if (this.isAppointmentInquiry(text)) {
+                    return this.STATES.VIEWING_APPOINTMENTS;
                 } else {
-                    return CONVERSATION_STATES.GENERAL_INQUIRY;
+                    return this.STATES.GENERAL_CONVERSATION;
                 }
 
-            case CONVERSATION_STATES.SCHEDULING_INTENT:
-                // Quer agendar - próximo passo é escolher profissional ou serviço
-                if (this.isNumericSelection(lowerMessage)) {
-                    return CONVERSATION_STATES.SELECTING_PROFESSIONAL;
-                } else if (this.hasDateTimeInfo(lowerMessage)) {
-                    return CONVERSATION_STATES.SELECTING_DATE;
+            case this.STATES.SCHEDULING_INTENT:
+                if (analysis?.dateTimeInfo?.hasDate && analysis?.dateTimeInfo?.hasTime) {
+                    return this.STATES.SELECTING_PROFESSIONAL;
+                } else if (!analysis?.dateTimeInfo?.hasDate) {
+                    return this.STATES.COLLECTING_DATE;
+                } else if (!analysis?.dateTimeInfo?.hasTime) {
+                    return this.STATES.COLLECTING_TIME;
                 } else {
-                    return CONVERSATION_STATES.SELECTING_SERVICE;
+                    return this.STATES.COLLECTING_DATE;
                 }
 
-            case CONVERSATION_STATES.SELECTING_PROFESSIONAL:
-                // Escolheu profissional
-                if (this.isNumericSelection(lowerMessage) || this.isConfirmation(lowerMessage)) {
-                    return CONVERSATION_STATES.SELECTING_DATE;
+            case this.STATES.COLLECTING_DATE:
+                if (this.hasDateInfo(text)) {
+                    return this.STATES.COLLECTING_TIME;
                 } else {
-                    return CONVERSATION_STATES.SELECTING_PROFESSIONAL; // Ainda escolhendo
+                    return this.STATES.COLLECTING_DATE; // Continua coletando
                 }
 
-            case CONVERSATION_STATES.SELECTING_DATE:
-                // Escolhendo data/horário
-                if (this.hasDateTimeInfo(lowerMessage) || this.isNumericSelection(lowerMessage)) {
-                    return CONVERSATION_STATES.CONFIRMING_APPOINTMENT;
+            case this.STATES.COLLECTING_TIME:
+                if (this.hasTimeInfo(text)) {
+                    return this.STATES.SELECTING_PROFESSIONAL;
                 } else {
-                    return CONVERSATION_STATES.SELECTING_DATE; // Ainda escolhendo
+                    return this.STATES.COLLECTING_TIME; // Continua coletando
                 }
 
-            case CONVERSATION_STATES.CONFIRMING_APPOINTMENT:
-                // Confirmando agendamento
-                if (this.isConfirmation(lowerMessage)) {
-                    return CONVERSATION_STATES.APPOINTMENT_CONFIRMED;
-                } else if (this.isNegation(lowerMessage)) {
-                    return CONVERSATION_STATES.SCHEDULING_INTENT; // Voltar ao início
+            case this.STATES.SELECTING_PROFESSIONAL:
+                if (this.isProfessionalSelection(text)) {
+                    return this.STATES.CONFIRMING_APPOINTMENT;
                 } else {
-                    return CONVERSATION_STATES.CONFIRMING_APPOINTMENT; // Ainda confirmando
+                    return this.STATES.SELECTING_PROFESSIONAL;
                 }
 
-            case CONVERSATION_STATES.APPOINTMENT_CONFIRMED:
-                // Agendamento confirmado - nova conversa
-                if (this.isSchedulingIntent(lowerMessage)) {
-                    return CONVERSATION_STATES.SCHEDULING_INTENT;
-                } else if (this.isReschedulingIntent(lowerMessage)) {
-                    return CONVERSATION_STATES.RESCHEDULING;
-                } else if (this.isCancellationIntent(lowerMessage)) {
-                    return CONVERSATION_STATES.CANCELING;
+            case this.STATES.CONFIRMING_APPOINTMENT:
+                if (this.isConfirmation(text)) {
+                    return this.STATES.APPOINTMENT_CONFIRMED;
+                } else if (this.isNegation(text)) {
+                    return this.STATES.SCHEDULING_INTENT; // Recomeça
                 } else {
-                    return CONVERSATION_STATES.GENERAL_INQUIRY;
+                    return this.STATES.CONFIRMING_APPOINTMENT;
+                }
+
+            case this.STATES.APPOINTMENT_CONFIRMED:
+                if (intention === 'scheduling') {
+                    return this.STATES.SCHEDULING_INTENT;
+                } else {
+                    return this.STATES.GENERAL_CONVERSATION;
                 }
 
             default:
-                return CONVERSATION_STATES.GENERAL_INQUIRY;
+                return this.STATES.GENERAL_CONVERSATION;
         }
     }
 
-    // 🔍 FUNÇÕES AUXILIARES PARA DETECTAR INTENÇÕES
+    // ✅ VERIFICADORES DE PADRÕES
     isGreeting(text) {
-        const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'e ai', 'eai', 'hey'];
-        return greetings.some(greeting => text.includes(greeting)) && text.length < 30;
+        const greetings = ['oi', 'olá', 'bom dia', 'boa tarde', 'boa noite', 'hey', 'e aí'];
+        return greetings.some(greeting => text.includes(greeting));
     }
 
-    isSchedulingIntent(text) {
-        const schedulingWords = ['agendar', 'marcar', 'consulta', 'horário', 'disponível', 'agenda', 'atendimento'];
-        return schedulingWords.some(word => text.includes(word));
+    isAppointmentInquiry(text) {
+        const inquiries = ['consultas', 'agendamentos', 'marcado', 'quando', 'horário'];
+        return inquiries.some(inquiry => text.includes(inquiry));
     }
 
-    isReschedulingIntent(text) {
-        const reschedulingWords = ['remarcar', 'reagendar', 'mudar horário', 'trocar data', 'alterar'];
-        return reschedulingWords.some(word => text.includes(word));
+    hasDateInfo(text) {
+        const datePatterns = [
+            /\d{1,2}\/\d{1,2}/, // DD/MM
+            /amanhã|hoje|depois/, // Relativo
+            /segunda|terça|quarta|quinta|sexta|sábado|domingo/, // Dias da semana
+            /\d{1,2} de \w+/ // Dia do mês
+        ];
+        return datePatterns.some(pattern => pattern.test(text));
     }
 
-    isCancellationIntent(text) {
-        const cancellationWords = ['cancelar', 'desmarcar', 'não vou', 'não posso'];
-        return cancellationWords.some(word => text.includes(word));
+    hasTimeInfo(text) {
+        const timePatterns = [
+            /\d{1,2}:\d{2}/, // HH:MM
+            /\d{1,2}h/, // 14h
+            /manhã|tarde|noite/, // Período
+            /\d{1,2} horas/ // X horas
+        ];
+        return timePatterns.some(pattern => pattern.test(text));
     }
 
-    isNumericSelection(text) {
-        return /^\d+$/.test(text.trim()) || ['1', '2', '3', '4', '5'].includes(text.trim());
+    isProfessionalSelection(text) {
+        // Números (1, 2, 3) ou nomes
+        return /^\d+$/.test(text.trim()) || text.includes('dr') || text.includes('dra');
     }
 
     isConfirmation(text) {
-        const confirmations = ['sim', 'confirmo', 'ok', 'tudo bem', 'perfeito', 'aceito', 'pode ser'];
-        return confirmations.some(word => text.includes(word));
+        const confirmations = ['sim', 'confirmo', 'ok', 'certo', 'isso', 'perfeito'];
+        return confirmations.some(conf => text.includes(conf));
     }
 
     isNegation(text) {
-        const negations = ['não', 'nao', 'cancelar', 'mudar', 'trocar'];
-        return negations.some(word => text.includes(word));
+        const negations = ['não', 'nao', 'cancelar', 'voltar', 'outro'];
+        return negations.some(neg => text.includes(neg));
     }
 
-    hasDateTimeInfo(text) {
-        const dateTimePatterns = [
-            /\d{1,2}\/\d{1,2}/, // dd/mm
-            /\d{1,2}:\d{2}/, // hh:mm
-            /(amanhã|hoje|segunda|terça|quarta|quinta|sexta|sábado|domingo)/,
-            /(manhã|tarde|noite)/,
-            /\d{1,2}h/
-        ];
-        return dateTimePatterns.some(pattern => pattern.test(text));
-    }
-
-    // 📋 OBTER CONTEXTO BASEADO NO ESTADO
-    getStateContext(state, stateData = {}) {
+    // ✅ OBTER CONTEXTO DO ESTADO
+    getStateContext(state) {
         const contexts = {
-            [CONVERSATION_STATES.INITIAL]: 'Cliente iniciando primeira conversa',
-            [CONVERSATION_STATES.GREETING]: 'Cliente cumprimentando',
-            [CONVERSATION_STATES.SCHEDULING_INTENT]: 'Cliente quer agendar consulta',
-            [CONVERSATION_STATES.SELECTING_SERVICE]: 'Cliente escolhendo tipo de serviço',
-            [CONVERSATION_STATES.SELECTING_PROFESSIONAL]: 'Cliente escolhendo profissional',
-            [CONVERSATION_STATES.SELECTING_DATE]: 'Cliente escolhendo data/horário',
-            [CONVERSATION_STATES.CONFIRMING_APPOINTMENT]: 'Cliente confirmando agendamento',
-            [CONVERSATION_STATES.APPOINTMENT_CONFIRMED]: 'Agendamento confirmado com sucesso',
-            [CONVERSATION_STATES.RESCHEDULING]: 'Cliente quer remarcar consulta',
-            [CONVERSATION_STATES.CANCELING]: 'Cliente quer cancelar consulta',
-            [CONVERSATION_STATES.GENERAL_INQUIRY]: 'Pergunta geral ou informação'
+            [this.STATES.INITIAL]: {
+                expectation: 'greeting_or_intent',
+                prompt_style: 'welcoming'
+            },
+            [this.STATES.GREETING]: {
+                expectation: 'intent_clarification',
+                prompt_style: 'friendly'
+            },
+            [this.STATES.SCHEDULING_INTENT]: {
+                expectation: 'date_time_info',
+                prompt_style: 'helpful'
+            },
+            [this.STATES.COLLECTING_DATE]: {
+                expectation: 'date_specification',
+                prompt_style: 'guiding'
+            },
+            [this.STATES.COLLECTING_TIME]: {
+                expectation: 'time_specification',
+                prompt_style: 'specific'
+            },
+            [this.STATES.SELECTING_PROFESSIONAL]: {
+                expectation: 'professional_choice',
+                prompt_style: 'options_presenting'
+            },
+            [this.STATES.CONFIRMING_APPOINTMENT]: {
+                expectation: 'confirmation',
+                prompt_style: 'confirming'
+            }
         };
 
-        return {
-            description: contexts[state] || 'Estado não identificado',
-            data: stateData,
-            nextExpectedAction: this.getExpectedAction(state)
+        return contexts[state] || {
+            expectation: 'general_conversation',
+            prompt_style: 'conversational'
         };
-    }
-
-    // 🎯 PRÓXIMA AÇÃO ESPERADA
-    getExpectedAction(state) {
-        const actions = {
-            [CONVERSATION_STATES.INITIAL]: 'Aguardar primeira mensagem',
-            [CONVERSATION_STATES.GREETING]: 'Responder cumprimento e oferecer ajuda',
-            [CONVERSATION_STATES.SCHEDULING_INTENT]: 'Mostrar opções de profissionais/serviços',
-            [CONVERSATION_STATES.SELECTING_PROFESSIONAL]: 'Aguardar seleção de profissional',
-            [CONVERSATION_STATES.SELECTING_DATE]: 'Aguardar data/horário desejado',
-            [CONVERSATION_STATES.CONFIRMING_APPOINTMENT]: 'Aguardar confirmação final',
-            [CONVERSATION_STATES.APPOINTMENT_CONFIRMED]: 'Oferecer outros serviços',
-            [CONVERSATION_STATES.RESCHEDULING]: 'Buscar agendamento atual e oferecer novas opções',
-            [CONVERSATION_STATES.CANCELING]: 'Confirmar cancelamento',
-            [CONVERSATION_STATES.GENERAL_INQUIRY]: 'Responder pergunta específica'
-        };
-
-        return actions[state] || 'Determinar próxima ação';
     }
 }
 
-module.exports = { ConversationStates, CONVERSATION_STATES };
+module.exports = ConversationStates;

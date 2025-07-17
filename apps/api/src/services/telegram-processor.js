@@ -1,40 +1,80 @@
 const axios = require("axios");
 const supabaseAdmin = require("../config/supabaseAdmin");
-const ConversationEngine = require("./conversation-engine");
+const ConversationMemory = require('./conversation-memory');
+const ConversationEngine = require('./conversation-engine');
 const CustomerContext = require("./customer-context");
-
-const { ConversationStates, CONVERSATION_STATES } = require('./conversation-states');
+const { createClient } = require('@supabase/supabase-js');
+const ConversationStates = require('./conversation-states');
 const NaturalTiming = require('./natural-timing');
 const IntelligentScheduling = require('./intelligent-scheduling');
 
 class TelegramProcessor {
     constructor() {
-        // Configuração dinâmica - busca por usuário
-        this.maxConcurrentRequests = 5;
-        this.currentRequests = 0;
-        this.requestQueue = [];
-        this.conversationEngine = new ConversationEngine();
-        this.customerContext = new CustomerContext();
-        this.processingMessages = new Set(); // Controle para evitar processamento duplo
+        this.intentionAnalyzer = require('./intention-analyzer');
+        this.conversationContextManager = require('./conversation-context-manager');
+        
+        // ✅ NOVOS SERVIÇOS INTEGRADOS
+        this.conversationMemory = new ConversationMemory();
         this.conversationStates = new ConversationStates();
         this.naturalTiming = new NaturalTiming();
         this.intelligentScheduling = new IntelligentScheduling();
+        
+        this.supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
     }
 
     // Buscar configuração do bot por usuário
     async getUserBotConfig(userId) {
-        const { data: channel, error } = await supabaseAdmin
-            .from("user_channels")
-            .select("channel_config")
-            .eq("user_id", userId)
-            .eq("channel_type", "telegram")
-            .eq("is_active", true)
+    try {
+        console.log('⚙️ Buscando configuração do bot para usuário:', userId);
+        
+        const { createClient } = require('@supabase/supabase-js');
+        const supabaseAdmin = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+
+        // BUSCAR bot_token na tabela user_channels campo channel_config
+        const { data: channelConfig, error } = await supabaseAdmin
+            .from('user_channels')
+            .select('channel_config, is_active')
+            .eq('user_id', userId)
+            .eq('channel_type', 'telegram')
+            .eq('is_active', true)
             .single();
 
-        if (error) throw new Error("Bot Telegram não configurado para este usuário");
+        if (error) {
+            console.error('❌ Erro buscando configuração do canal:', error);
+            return null;
+        }
+
+        if (!channelConfig?.channel_config) {
+            console.error('❌ Configuração do canal não encontrada');
+            return null;
+        }
+
+        // EXTRAIR bot_token do JSON channel_config
+        const config = channelConfig.channel_config;
+        const botToken = config.bot_token || config.token || config.telegram_bot_token;
+
+        if (!botToken) {
+            console.error('❌ Bot token não encontrado na configuração:', config);
+            return null;
+        }
+
+        console.log('✅ Configuração do bot encontrada');
+        return {
+            bot_token: botToken,
+            is_active: channelConfig.is_active
+        };
         
-        return channel.channel_config;
+    } catch (error) {
+        console.error('❌ Erro geral buscando config do bot:', error);
+        return null;
     }
+}
 
     // ✅ NOVA FUNÇÃO: Enviar ação de "digitando"
     async sendTypingAction(botToken, chatId) {
@@ -179,180 +219,241 @@ class TelegramProcessor {
         }
     }
 
-    // Processar mensagens (adaptado para multi-tenant com conversação natural)
-    async processMessage(req, res) {
+    async showAvailableProfessionals(userId, dateTimeInfo) {
         try {
-            // ✅ VERIFICAÇÃO DE SEGURANÇA:
-            if (!req || !req.body) {
-                console.error('❌ req.body é undefined');
-                return res ? res.status(400).json({ error: 'Body inválido' }) : false;
-            }
-
-            const { message } = req.body;
-            
-            if (!message) {
-                console.error('❌ message é undefined');
-                return res ? res.status(400).json({ error: 'Message não encontrada' }) : false;
-            }
-            
-            if (!message?.text) {
-                return res.status(200).json({ status: 'ignored', reason: 'no_text' });
-            }
-
-            console.log('📱 Processando mensagem Telegram:', message.text);
-            console.log('👤 De:', message.from.id);
-            console.log('💬 Chat:', message.chat.id);
-
-            // 1. BUSCAR/CRIAR CONTATO E CONVERSA
-            const { contact, conversation, userId } = await this.getOrCreateContactAndConversation(message);
-            
-            if (!contact || !conversation || !userId) {
-                console.error('❌ Erro obtendo dados do contato/conversa');
-                return res.status(200).json({ status: 'error', reason: 'contact_conversation_error' });
-            }
-
-            // 2. SALVAR MENSAGEM NO BANCO
-            const savedMessage = await this.saveMessage({
-                conversation_id: conversation.id,
-                content: message.text,
-                message_type: 'text',
-                sender_type: 'user',
-                channel_type: 'telegram',
-                channel_message_id: message.message_id.toString(),
-                user_id: userId,
-                metadata: { telegram_data: message }
-            });
-
-            // 3. BUSCAR CONTEXTO HISTÓRICO (CORREÇÃO 1: MEMÓRIA HISTÓRICA)
-            const intentionAnalyzer = require('./intention-analyzer');
-            const historicalContext = await intentionAnalyzer.getClientHistoricalContext(contact.id, userId);
-            
-            console.log('🧠 Contexto histórico:', {
-                hasHistory: historicalContext?.hasHistory,
-                recentMessages: historicalContext?.recentMessages?.length || 0,
-                upcomingAppointments: historicalContext?.upcomingAppointments?.length || 0
-            });
-
-            // 4. BUSCAR ESTADO ATUAL DA CONVERSA (CORREÇÃO 2: ESTADOS CONVERSACIONAIS)
-            const { state: currentState, data: stateData } = await this.conversationStates.getCurrentState(conversation.id);
-            console.log('📊 Estado da conversa:', currentState);
-
-            // 5. DETECTAR INTENÇÃO DE AGENDAMENTO (CORREÇÃO 4: AGENDAMENTO INTELIGENTE)
-            const schedulingIntent = await this.intelligentScheduling.detectSchedulingIntent(
-                message.text, 
-                currentState, 
-                historicalContext
+            const availableProfessionals = await this.intelligentScheduling.getAvailableProfessionals(
+                userId, dateTimeInfo.date, dateTimeInfo.time
             );
 
-            console.log('🎯 Intenção de agendamento:', schedulingIntent);
+            const response = this.intelligentScheduling.generateSchedulingResponse(
+                availableProfessionals, dateTimeInfo
+            );
 
-            // 6. PROCESSAR BASEADO NA INTENÇÃO
-            let responseResult;
-            let nextState = currentState;
-
-            if (schedulingIntent.intention && schedulingIntent.confidence > 0.7) {
-                // FLUXO DE AGENDAMENTO
-                console.log('📅 Processando fluxo de agendamento...');
-                
-                responseResult = await this.intelligentScheduling.processSchedulingIntent(
-                    message.text,
-                    contact.id,
-                    userId,
-                    currentState,
-                    historicalContext
-                );
-
-                // Determinar próximo estado baseado no resultado
-                nextState = await this.conversationStates.determineNextState(
-                    currentState, 
-                    message.text, 
-                    schedulingIntent
-                );
-
-            } else {
-                // FLUXO CONVERSACIONAL NORMAL
-                console.log('💬 Processando fluxo conversacional...');
-                
-                responseResult = await intentionAnalyzer.analyzeWithHistoricalContext(
-                    message.text,
-                    contact.id,
-                    userId,
-                    historicalContext
-                );
-
-                // Determinar próximo estado para conversa normal
-                nextState = await this.conversationStates.determineNextState(
-                    currentState, 
-                    message.text, 
-                    responseResult
-                );
-            }
-
-            // 7. SALVAR NOVO ESTADO DA CONVERSA
-            await this.conversationStates.setState(conversation.id, nextState, {
-                lastProcessedMessage: message.text,
-                lastIntention: schedulingIntent.intention || responseResult.intention,
-                confidence: schedulingIntent.confidence || responseResult.confidence
-            });
-
-            // 8. PREPARAR RESPOSTA
-            let responseText = responseResult.message || responseResult.response || 'Desculpe, não entendi. Pode repetir?';
-            
-            // Adicionar variações naturais
-            responseText = this.naturalTiming.addNaturalVariations(responseText);
-
-            // 9. ENVIAR RESPOSTA COM TIMING NATURAL (CORREÇÃO 3: TIMING NATURAL)
-            const botConfig = await this.getUserBotConfig(userId);
-            
-            if (botConfig?.bot_token) {
-                console.log('📤 Enviando resposta com timing natural...');
-                
-                const sentSuccessfully = await this.naturalTiming.processAndSendNaturally(
-                    botConfig.bot_token,
-                    message.chat.id,
-                    responseText
-                );
-
-                if (sentSuccessfully) {
-                    // 10. SALVAR RESPOSTA DA IA NO BANCO
-                    await this.saveMessage({
-                        conversation_id: conversation.id,
-                        content: responseText,
-                        message_type: 'text',
-                        sender_type: 'assistant',
-                        channel_type: 'telegram',
-                        channel_message_id: `ai_${Date.now()}`,
-                        user_id: userId,
-                        metadata: { 
-                            ai_analysis: responseResult,
-                            conversation_state: nextState,
-                            has_historical_context: historicalContext?.hasHistory || false
-                        }
-                    });
-
-                    console.log('✅ Mensagem processada com sucesso - NOVA IMPLEMENTAÇÃO FUNCIONANDO!');
-                    
-                    return res.status(200).json({ 
-                        status: 'success',
-                        processed_with_improvements: true,
-                        conversation_state: nextState,
-                        had_historical_context: historicalContext?.hasHistory || false,
-                        detected_scheduling: schedulingIntent.intention || false
-                    });
-                }
-            }
-
-            // Fallback se algo der errado
-            console.error('❌ Erro no processamento avançado, usando fallback simples');
-            return res.status(200).json({ status: 'fallback_used' });
+            return response;
 
         } catch (error) {
-            console.error('❌ Erro geral no processamento:', error);
-            return res.status(500).json({ 
-                status: 'error', 
-                error: error.message,
-                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            console.error('❌ Erro buscando profissionais:', error);
+            return {
+                type: 'error',
+                messages: ['Ops, tive um problema buscando os profissionais. Pode tentar novamente? 😊']
+            };
+        }
+    }
+
+    async handleIntelligentScheduling(text, contact, conversation, userId, schedulingAnalysis, currentState) {
+        try {
+            console.log('📅 Processando agendamento inteligente');
+
+            const states = this.conversationStates.STATES;
+
+            switch (currentState) {
+                case states.INITIAL:
+                case states.GREETING:
+                    if (schedulingAnalysis.hasIntent) {
+                        await this.conversationStates.updateState(
+                            conversation.id, states.SCHEDULING_INTENT
+                        );
+                        
+                        if (schedulingAnalysis.dateTimeInfo.isComplete) {
+                            return await this.showAvailableProfessionals(
+                                userId, schedulingAnalysis.dateTimeInfo
+                            );
+                        } else {
+                            return await this.requestMissingInfo(schedulingAnalysis.dateTimeInfo);
+                        }
+                    }
+                    break;
+
+                case states.COLLECTING_DATE:
+                    const dateInfo = this.intelligentScheduling.extractDate(text);
+                    if (dateInfo.found) {
+                        await this.conversationStates.updateState(
+                            conversation.id, states.COLLECTING_TIME, { date: dateInfo }
+                        );
+                        return {
+                            type: 'collecting_time',
+                            messages: ['Perfeito! 📅', 'E que horário você prefere?']
+                        };
+                    } else {
+                        return {
+                            type: 'retry_date',
+                            messages: ['Não consegui entender a data. 😅', 'Pode me dizer de outra forma? Ex: "amanhã" ou "15/07"']
+                        };
+                    }
+
+                case states.COLLECTING_TIME:
+                    const timeInfo = this.intelligentScheduling.extractTime(text);
+                    if (timeInfo.found) {
+                        // Buscar profissionais disponíveis
+                        const stateData = await this.getConversationStateData(conversation.id);
+                        const dateTimeInfo = {
+                            date: stateData?.date,
+                            time: timeInfo.value,
+                            hasDate: true,
+                            hasTime: true
+                        };
+                        
+                        return await this.showAvailableProfessionals(userId, dateTimeInfo);
+                    } else {
+                        return {
+                            type: 'retry_time',
+                            messages: ['Não consegui entender o horário. 😅', 'Pode me dizer assim: "14:00" ou "2 da tarde"?']
+                        };
+                    }
+
+                case states.SELECTING_PROFESSIONAL:
+                    return await this.handleProfessionalSelection(text, conversation, userId);
+
+                default:
+                    return await this.processGeneralConversation(text, contact, userId);
+            }
+
+        } catch (error) {
+            console.error('❌ Erro no agendamento inteligente:', error);
+            return {
+                type: 'error',
+                messages: ['Ops, tive um problema com o agendamento. Vamos tentar de novo? 😊']
+            };
+        }
+    }
+
+    async processWithContextAndState(text, contact, conversation, userId, memoryContext, currentState, schedulingAnalysis) {
+        try {
+            console.log('🧠 Processando com contexto completo');
+
+            // FLUXO DE AGENDAMENTO INTELIGENTE
+            if (schedulingAnalysis.hasIntent || currentState.includes('scheduling') || currentState.includes('collecting')) {
+                return await this.handleIntelligentScheduling(
+                    text, contact, conversation, userId, schedulingAnalysis, currentState
+                );
+            }
+
+            // FLUXO DE CONVERSA GERAL COM MEMÓRIA
+            const analysis = await this.intentionAnalyzer.analyzeWithContext(text, contact.id, userId, {
+                conversationHistory: memoryContext.context,
+                customerStage: memoryContext.relationshipStage,
+                shouldGreet: memoryContext.shouldGreet && !memoryContext.isNewCustomer
             });
+
+            // DETERMINAR PRÓXIMO ESTADO
+            const nextState = this.conversationStates.determineNextState(
+                currentState, text, analysis
+            );
+
+            // ATUALIZAR ESTADO
+            await this.conversationStates.updateState(
+                conversation.id, nextState, { lastMessage: text, analysis }
+            );
+
+            // PERSONALIZAR RESPOSTA BASEADA NO CONTEXTO
+            const contextualResponse = this.personalizeResponse(analysis, memoryContext);
+
+            return {
+                type: 'contextual',
+                messages: Array.isArray(contextualResponse) ? contextualResponse : [contextualResponse],
+                analysis: analysis,
+                newState: nextState
+            };
+
+        } catch (error) {
+            console.error('❌ Erro no processamento contextual:', error);
+            return {
+                type: 'error',
+                messages: ['Ops, tive um probleminha. Pode tentar novamente? 😊']
+            };
+        }
+    }
+
+    async saveMessagesToDatabase(messages, conversationId, userId, senderType) {
+        try {
+            for (const message of messages) {
+                await this.supabase
+                    .from('messages')
+                    .insert({
+                        conversation_id: conversationId,
+                        user_id: userId,
+                        content: message,
+                        sender_type: senderType,
+                        channel_type: 'telegram',
+                        created_at: new Date().toISOString()
+                    });
+            }
+        } catch (error) {
+            console.error('❌ Erro salvando mensagens:', error);
+        }
+    }
+
+    async sendNaturalResponse(response, userId, chatId, conversation) {
+        try {
+            // BUSCAR CONFIGURAÇÃO DO BOT
+            const botConfig = await this.getUserBotConfig(userId);
+            if (!botConfig?.bot_token) {
+                console.error('❌ Bot token não encontrado');
+                return false;
+            }
+
+            // ENVIAR COM TIMING NATURAL
+            await this.naturalTiming.sendConversationalMessages(
+                response.messages,
+                botConfig.bot_token,
+                chatId
+            );
+
+            // SALVAR MENSAGENS NO BANCO
+            await this.saveMessagesToDatabase(response.messages, conversation.id, userId, 'ai');
+
+            return true;
+
+        } catch (error) {
+            console.error('❌ Erro enviando resposta natural:', error);
+            return false;
+        }
+    }
+
+    // Processar mensagens (adaptado para multi-tenant com conversação natural)
+    async processMessage(message, userId) {
+        try {
+            console.log('📱 Processando mensagem Telegram:', message.text);
+            
+            const text = message.text;
+            const chatId = message.chat.id;
+            const fromId = message.from.id;
+
+            // 1. BUSCAR/CRIAR CONTATO E CONVERSA
+            const { contact, conversation } = await this.getOrCreateContactAndConversation(message, userId);
+            
+            if (!contact || !conversation) {
+                console.error('❌ Falha ao obter contato/conversa');
+                return await this.sendErrorMessage(chatId, userId);
+            }
+
+            // 2. OBTER CONTEXTO COMPLETO COM MEMÓRIA
+            const memoryContext = await this.conversationMemory.prepareContextForAI(
+                contact.id, userId, text
+            );
+
+            // 3. OBTER ESTADO ATUAL DA CONVERSA
+            const currentState = await this.conversationStates.getCurrentState(conversation.id);
+            console.log('📊 Estado atual da conversa:', currentState);
+
+            // 4. ANÁLISE INTELIGENTE DE AGENDAMENTO
+            const schedulingAnalysis = await this.intelligentScheduling.analyzeSchedulingIntent(
+                text, currentState
+            );
+
+            // 5. PROCESSAR BASEADO NO CONTEXTO E ESTADO
+            const response = await this.processWithContextAndState(
+                text, contact, conversation, userId, memoryContext, currentState, schedulingAnalysis
+            );
+
+            // 6. ENVIAR RESPOSTA COM TIMING NATURAL
+            await this.sendNaturalResponse(response, userId, chatId, conversation);
+
+            return true;
+
+        } catch (error) {
+            console.error('❌ Erro processando mensagem:', error);
+            return await this.sendErrorMessage(message.chat.id, userId);
         }
     }
 
@@ -1257,6 +1358,35 @@ class TelegramProcessor {
         }
     }
 
+    personalizeResponse(analysis, memoryContext) {
+        let response = analysis.response || 'Olá! Como posso ajudar?';
+
+        // PERSONALIZAR BASEADO NO RELACIONAMENTO
+        if (memoryContext.customerName && !memoryContext.shouldGreet) {
+            // Cliente conhecido, não precisa se apresentar
+            response = response.replace(/oi|olá|bom dia|boa tarde|boa noite/gi, '');
+            response = `${memoryContext.customerName}, ${response.trim()}`;
+        }
+
+        // ADICIONAR CONTEXTO SE RELEVANTE
+        if (memoryContext.relationshipStage === 'loyal_customer') {
+            response = this.addLoyalCustomerTouch(response);
+        }
+
+        return response;
+    }
+
+    addLoyalCustomerTouch(response) {
+        const touches = [
+            'Como sempre, estou aqui para ajudar! ',
+            'É sempre um prazer falar com você! ',
+            'Que bom ter você aqui novamente! '
+        ];
+        
+        const randomTouch = touches[Math.floor(Math.random() * touches.length)];
+        return randomTouch + response;
+    }
+
     // ✅ NOVA FUNÇÃO: Verificar horário comercial padrão (fallback)
     checkDefaultBusinessHours(date, time) {
         try {
@@ -1888,29 +2018,187 @@ class TelegramProcessor {
     }
 
 
-// ✅ FUNÇÃO AUXILIAR: Buscar/Criar contato e conversa (manter lógica existente)
-    async getOrCreateContactAndConversation(message) {
+    // ✅ FUNÇÃO AUXILIAR: Buscar/Criar contato e conversa (manter lógica existente)
+    async getOrCreateContactAndConversation(message, userId) {
         try {
-            // TODO: Usar a lógica existente do seu telegram-processor.js
-            // Esta é apenas a estrutura - você deve usar o código que já tem funcionando
+            console.log('🔍 Buscando/criando contato e conversa REAL...');
             
-            console.log('🔍 Buscando/criando contato e conversa...');
+            const telegramId = message.from.id.toString();
+            const chatId = message.chat.id.toString();
+            const phone = telegramId; // Usar telegram_id como phone temporariamente
             
-            // Buscar usuário pelo telegram_chat_id ou telefone
-            // Criar contato se não existir
-            // Buscar/criar conversa
-            // Retornar { contact, conversation, userId }
+            // ===============================================
+            // 1. BUSCAR OU CRIAR CONTATO
+            // ===============================================
+            let { data: existingContact, error: contactError } = await this.supabase
+                .from('contacts')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('telegram_id', telegramId)
+                .single();
+
+            let contact;
             
-            // Por ora, retorno fictício - SUBSTITUA pela sua lógica atual
+            if (contactError && contactError.code === 'PGRST116') {
+                // Contato não existe, criar novo
+                console.log('👤 Criando novo contato...');
+                
+                const { data: newContact, error: createContactError } = await this.supabase
+                    .from('contacts')
+                    .insert({
+                        user_id: userId,
+                        name: `${message.from.first_name} ${message.from.last_name || ''}`.trim(),
+                        phone: phone,
+                        telegram_id: telegramId,
+                        telegram_username: message.from.username || null,
+                        source: 'telegram',
+                        metadata: {
+                            telegram_data: message.from
+                        }
+                    })
+                    .select()
+                    .single();
+
+                if (createContactError) {
+                    console.error('❌ Erro criando contato:', createContactError);
+                    throw createContactError;
+                }
+                
+                contact = newContact;
+                console.log('✅ Contato criado:', contact.id);
+                
+            } else if (contactError) {
+                console.error('❌ Erro buscando contato:', contactError);
+                throw contactError;
+            } else {
+                contact = existingContact;
+                console.log('✅ Contato encontrado:', contact.id);
+            }
+
+            // ===============================================
+            // 2. BUSCAR OU CRIAR CONVERSA
+            // ===============================================
+            let { data: existingConversation, error: conversationError } = await this.supabase
+                .from('conversations')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('contact_id', contact.id)
+                .eq('channel_type', 'telegram')
+                .eq('is_active', true)
+                .single();
+
+            let conversation;
+            
+            if (conversationError && conversationError.code === 'PGRST116') {
+                // Conversa não existe, criar nova
+                console.log('💬 Criando nova conversa...');
+                
+                const { data: newConversation, error: createConversationError } = await this.supabase
+                    .from('conversations')
+                    .insert({
+                        user_id: userId,
+                        contact_id: contact.id,
+                        channel_type: 'telegram',
+                        channel_conversation_id: chatId,
+                        is_active: true,
+                        metadata: {
+                            chat_data: message.chat,
+                            conversation_state: 'initial'
+                        }
+                    })
+                    .select()
+                    .single();
+
+                if (createConversationError) {
+                    console.error('❌ Erro criando conversa:', createConversationError);
+                    throw createConversationError;
+                }
+                
+                conversation = newConversation;
+                console.log('✅ Conversa criada:', conversation.id);
+                
+            } else if (conversationError) {
+                console.error('❌ Erro buscando conversa:', conversationError);
+                throw conversationError;
+            } else {
+                conversation = existingConversation;
+                console.log('✅ Conversa encontrada:', conversation.id);
+            }
+
+            // ===============================================
+            // 3. SALVAR MENSAGEM NO BANCO
+            // ===============================================
+            const { error: messageError } = await this.supabase
+                .from('messages')
+                .insert({
+                    conversation_id: conversation.id,
+                    user_id: userId,
+                    contact_id: contact.id,
+                    content: message.text,
+                    sender_type: 'user',
+                    channel_type: 'telegram',
+                    channel_message_id: message.message_id.toString(),
+                    metadata: {
+                        telegram_message: message
+                    }
+                });
+
+            if (messageError) {
+                console.error('❌ Erro salvando mensagem:', messageError);
+                // Não falhar por causa de erro de mensagem
+            } else {
+                console.log('💾 Mensagem salva com sucesso');
+            }
+
+            console.log('✅ Contato e conversa prontos:', {
+                contactId: contact.id,
+                conversationId: conversation.id
+            });
+
             return {
-                contact: { id: 'contact_id', name: 'Nome do Cliente' },
-                conversation: { id: 'conversation_id' },
-                userId: 'user_id'
+                contact: contact,
+                conversation: conversation
             };
+
+        } catch (error) {
+            console.error('❌ Erro geral em getOrCreateContactAndConversation:', error);
+            
+            // FALLBACK: Retornar estrutura mínima funcional
+            return {
+                contact: {
+                    id: 'fallback-contact-id',
+                    name: message.from.first_name,
+                    phone: message.from.id.toString()
+                },
+                conversation: {
+                    id: 'fallback-conversation-id',
+                    channel_type: 'telegram'
+                }
+            };
+        }
+    }
+
+    async getBySubdomain(subdomain) {
+        try {
+            console.log('🔍 Buscando usuário por subdomínio:', subdomain);
+            
+            const { data: user, error } = await this.supabase
+                .from('users')
+                .select('*')
+                .or(`subdomain.eq.${subdomain},subdomain.eq.${subdomain.replace('-production', '')}`)
+                .single();
+
+            if (error) {
+                console.error('❌ Usuário não encontrado para subdomínio:', subdomain, error);
+                return null;
+            }
+
+            console.log('✅ Usuário encontrado:', user.id);
+            return user;
             
         } catch (error) {
-            console.error('❌ Erro buscando/criando contato:', error);
-            return { contact: null, conversation: null, userId: null };
+            console.error('❌ Erro buscando usuário:', error);
+            return null;
         }
     }
 

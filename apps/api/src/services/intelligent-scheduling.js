@@ -1,507 +1,383 @@
-// 🎯 OBJETIVO: Processar agendamentos de forma inteligente e natural
+// ===============================================
+// 📅 CORREÇÃO 4: FLUXO DE AGENDAMENTO INTELIGENTE
+// ===============================================
+// 📍 ARQUIVO: apps/api/src/services/intelligent-scheduling.js
+// 🎯 OBJETIVO: Processar agendamentos corretamente
 
 const { createClient } = require('@supabase/supabase-js');
-const axios = require('axios');
 
 class IntelligentScheduling {
     constructor() {
-        this.supabaseAdmin = createClient(
+        this.supabase = createClient(
             process.env.SUPABASE_URL,
             process.env.SUPABASE_SERVICE_ROLE_KEY
         );
     }
 
-    // 🔍 DETECTAR INTENÇÃO DE AGENDAMENTO COM CONTEXTO
-    detectSchedulingIntent(messageText, conversationState, historicalContext) {
-        const lowerText = messageText.toLowerCase().trim();
+    // ✅ ANALISAR INTENÇÃO DE AGENDAMENTO
+    async analyzeSchedulingIntent(message, conversationState) {
+        const text = message.toLowerCase();
         
-        console.log('🔍 Detectando intenção de agendamento...');
-        console.log('📝 Mensagem:', lowerText);
-        console.log('📊 Estado conversa:', conversationState);
+        console.log('🔍 Analisando intenção de agendamento:', text);
 
-        // Palavras-chave de agendamento
         const schedulingKeywords = [
-            'agendar', 'marcar', 'consulta', 'atendimento', 'horário', 'agenda',
-            'disponível', 'livre', 'vaga', 'quando posso', 'tem vaga',
-            'quero marcar', 'gostaria de agendar', 'preciso marcar'
+            'agendar', 'marcar', 'consulta', 'horário', 'hora',
+            'amanhã', 'hoje', 'semana', 'segunda', 'terça', 'quarta',
+            'quinta', 'sexta', 'sábado', 'domingo', 'dia'
         ];
 
-        // Palavras-chave de reagendamento
-        const reschedulingKeywords = [
-            'remarcar', 'reagendar', 'mudar', 'trocar', 'alterar',
-            'mudar horário', 'trocar data', 'outro dia', 'outro horário'
-        ];
+        const hasSchedulingIntent = schedulingKeywords.some(keyword => 
+            text.includes(keyword)
+        );
 
-        // Palavras-chave de cancelamento
-        const cancellationKeywords = [
-            'cancelar', 'desmarcar', 'não vou', 'não posso', 'não vai dar',
-            'cancelamento', 'desmarcar consulta'
-        ];
-
-        // Detectar tipo de intenção
-        let intention = null;
-        let confidence = 0;
-
-        if (schedulingKeywords.some(keyword => lowerText.includes(keyword))) {
-            intention = 'scheduling';
-            confidence = 0.8;
-        } else if (reschedulingKeywords.some(keyword => lowerText.includes(keyword))) {
-            intention = 'rescheduling';
-            confidence = 0.8;
-        } else if (cancellationKeywords.some(keyword => lowerText.includes(keyword))) {
-            intention = 'cancellation';
-            confidence = 0.8;
-        }
-
-        // Aumentar confiança se tiver contexto histórico de agendamentos
-        if (intention && historicalContext?.upcomingAppointments?.length > 0) {
-            confidence = Math.min(confidence + 0.1, 0.95);
-        }
-
-        // Detectar informações de data/hora na mensagem
-        const dateTimeInfo = this.extractDateTimeInfo(lowerText);
-
+        // Extrair informações de data e hora
+        const dateTimeInfo = this.extractDateTimeInfo(text);
+        
         return {
-            intention,
-            confidence,
-            dateTimeInfo,
-            hasExistingAppointments: historicalContext?.upcomingAppointments?.length > 0,
-            suggestedAction: this.getSuggestedAction(intention, conversationState, dateTimeInfo)
+            hasIntent: hasSchedulingIntent,
+            confidence: this.calculateConfidence(text, hasSchedulingIntent),
+            dateTimeInfo: dateTimeInfo,
+            suggestedAction: this.suggestAction(dateTimeInfo, conversationState)
         };
     }
 
-    // 📅 EXTRAIR INFORMAÇÕES DE DATA/HORA DA MENSAGEM
+    // ✅ EXTRAIR INFORMAÇÕES DE DATA E HORA
     extractDateTimeInfo(text) {
-        const dateTimeInfo = {
-            hasDate: false,
-            hasTime: false,
-            extractedDate: null,
-            extractedTime: null,
-            isRelativeDate: false
+        const dateInfo = this.extractDate(text);
+        const timeInfo = this.extractTime(text);
+        
+        return {
+            hasDate: dateInfo.found,
+            hasTime: timeInfo.found,
+            date: dateInfo.value,
+            time: timeInfo.value,
+            dateText: dateInfo.text,
+            timeText: timeInfo.text,
+            isComplete: dateInfo.found && timeInfo.found
+        };
+    }
+
+    // ✅ EXTRAIR DATA
+    extractDate(text) {
+        // Padrões de data
+        const patterns = {
+            relative: {
+                hoje: new Date(),
+                amanhã: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                'depois de amanhã': new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+            },
+            weekdays: {
+                segunda: 1, terça: 2, quarta: 3, quinta: 4, 
+                sexta: 5, sábado: 6, domingo: 0
+            },
+            datePattern: /(\d{1,2})\/(\d{1,2})/,
+            dayPattern: /(\d{1,2}) de (\w+)/
         };
 
-        // Padrões de data
-        const datePatterns = [
-            { regex: /(\d{1,2})\/(\d{1,2})/, type: 'dd/mm' },
-            { regex: /(amanhã|amanha)/, type: 'tomorrow' },
-            { regex: /(hoje)/, type: 'today' },
-            { regex: /(segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo)/, type: 'weekday' },
-            { regex: /(próxima|proxima)\s+(segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo)/, type: 'next_weekday' }
-        ];
-
-        // Padrões de hora
-        const timePatterns = [
-            { regex: /(\d{1,2}):(\d{2})/, type: 'hh:mm' },
-            { regex: /(\d{1,2})h(\d{2})?/, type: 'Xh ou XhYY' },
-            { regex: /(manhã|manha)/, type: 'morning' },
-            { regex: /(tarde)/, type: 'afternoon' },
-            { regex: /(noite)/, type: 'evening' },
-            { regex: /(\d{1,2})\s*(da\s*)?(manhã|manha|tarde|noite)/, type: 'X da manhã/tarde/noite' }
-        ];
-
-        // Verificar padrões de data
-        for (const pattern of datePatterns) {
-            const match = text.match(pattern.regex);
-            if (match) {
-                dateTimeInfo.hasDate = true;
-                dateTimeInfo.extractedDate = match[0];
-                dateTimeInfo.isRelativeDate = ['tomorrow', 'today', 'weekday', 'next_weekday'].includes(pattern.type);
-                break;
+        // Verificar datas relativas
+        for (const [keyword, date] of Object.entries(patterns.relative)) {
+            if (text.includes(keyword)) {
+                return {
+                    found: true,
+                    value: date,
+                    text: keyword,
+                    type: 'relative'
+                };
             }
         }
 
-        // Verificar padrões de hora
-        for (const pattern of timePatterns) {
-            const match = text.match(pattern.regex);
-            if (match) {
-                dateTimeInfo.hasTime = true;
-                dateTimeInfo.extractedTime = match[0];
-                break;
+        // Verificar dias da semana
+        for (const [dayName, dayNumber] of Object.entries(patterns.weekdays)) {
+            if (text.includes(dayName)) {
+                const nextDate = this.getNextWeekday(dayNumber);
+                return {
+                    found: true,
+                    value: nextDate,
+                    text: dayName,
+                    type: 'weekday'
+                };
             }
         }
 
-        return dateTimeInfo;
-    }
-
-    // 🎯 SUGERIR PRÓXIMA AÇÃO BASEADA NA INTENÇÃO
-    getSuggestedAction(intention, conversationState, dateTimeInfo) {
-        switch (intention) {
-            case 'scheduling':
-                if (dateTimeInfo.hasDate && dateTimeInfo.hasTime) {
-                    return 'show_professionals_for_datetime';
-                } else if (dateTimeInfo.hasDate) {
-                    return 'ask_preferred_time';
-                } else if (dateTimeInfo.hasTime) {
-                    return 'ask_preferred_date';
-                } else {
-                    return 'show_available_options';
-                }
-
-            case 'rescheduling':
-                return 'show_current_appointments_and_new_options';
-
-            case 'cancellation':
-                return 'show_appointments_to_cancel';
-
-            default:
-                return 'clarify_intent';
-        }
-    }
-
-    // 👨‍⚕️ BUSCAR PROFISSIONAIS DISPONÍVEIS
-    async getAvailableProfessionals(userId, serviceId = null) {
-        try {
-            console.log('👨‍⚕️ Buscando profissionais disponíveis...');
-            
-            let query = this.supabaseAdmin
-                .from('professionals')
-                .select('id, name, speciality, is_active')
-                .eq('user_id', userId)
-                .eq('is_active', true);
-
-            if (serviceId) {
-                // Filtrar por serviço específico se fornecido
-                query = query.eq('service_id', serviceId);
-            }
-
-            const { data: professionals, error } = await query;
-
-            if (error) throw error;
-
-            console.log('✅ Encontrados', professionals?.length || 0, 'profissionais');
-            return professionals || [];
-
-        } catch (error) {
-            console.error('❌ Erro buscando profissionais:', error);
-            return [];
-        }
-    }
-
-    // 📋 BUSCAR SERVIÇOS DISPONÍVEIS
-    async getAvailableServices(userId) {
-        try {
-            console.log('📋 Buscando serviços disponíveis...');
-            
-            const { data: services, error } = await this.supabaseAdmin
-                .from('services')
-                .select('id, name, description, duration, price')
-                .eq('user_id', userId)
-                .eq('is_active', true);
-
-            if (error) throw error;
-
-            console.log('✅ Encontrados', services?.length || 0, 'serviços');
-            return services || [];
-
-        } catch (error) {
-            console.error('❌ Erro buscando serviços:', error);
-            return [];
-        }
-    }
-
-    // 🕐 VERIFICAR DISPONIBILIDADE EM DATA/HORA ESPECÍFICA
-    async checkAvailability(professionalId, requestedDateTime, duration = 60) {
-        try {
-            console.log('🕐 Verificando disponibilidade...');
-            console.log('👨‍⚕️ Profissional:', professionalId);
-            console.log('📅 Data/Hora:', requestedDateTime);
-
-            const startTime = new Date(requestedDateTime);
-            const endTime = new Date(startTime.getTime() + duration * 60000);
-
-            // Buscar conflitos de agendamento
-            const { data: conflicts, error } = await this.supabaseAdmin
-                .from('appointments')
-                .select('id, scheduled_at, status')
-                .eq('professional_id', professionalId)
-                .in('status', ['confirmed', 'pending'])
-                .gte('scheduled_at', startTime.toISOString())
-                .lt('scheduled_at', endTime.toISOString());
-
-            if (error) throw error;
-
-            const isAvailable = !conflicts || conflicts.length === 0;
-            
-            console.log('📊 Disponibilidade:', isAvailable ? 'LIVRE' : 'OCUPADO');
+        // Verificar padrão DD/MM
+        const dateMatch = text.match(patterns.datePattern);
+        if (dateMatch) {
+            const day = parseInt(dateMatch[1]);
+            const month = parseInt(dateMatch[2]);
+            const year = new Date().getFullYear();
+            const date = new Date(year, month - 1, day);
             
             return {
-                available: isAvailable,
-                conflicts: conflicts || [],
-                suggestedTimes: isAvailable ? [] : await this.suggestAlternativeTimes(professionalId, requestedDateTime)
+                found: true,
+                value: date,
+                text: dateMatch[0],
+                type: 'formatted'
             };
+        }
+
+        return { found: false, value: null, text: null, type: null };
+    }
+
+    // ✅ EXTRAIR HORA
+    extractTime(text) {
+        const patterns = {
+            hourMinute: /(\d{1,2}):(\d{2})/,
+            hour: /(\d{1,2})h/,
+            period: /(manhã|tarde|noite)/,
+            specific: /(\d{1,2}) horas?/
+        };
+
+        // Verificar HH:MM
+        const timeMatch = text.match(patterns.hourMinute);
+        if (timeMatch) {
+            const hour = parseInt(timeMatch[1]);
+            const minute = parseInt(timeMatch[2]);
+            return {
+                found: true,
+                value: { hour, minute },
+                text: timeMatch[0],
+                type: 'formatted'
+            };
+        }
+
+        // Verificar hora simples (14h)
+        const hourMatch = text.match(patterns.hour);
+        if (hourMatch) {
+            const hour = parseInt(hourMatch[1]);
+            return {
+                found: true,
+                value: { hour, minute: 0 },
+                text: hourMatch[0],
+                type: 'simple'
+            };
+        }
+
+        // Verificar período
+        const periodMatch = text.match(patterns.period);
+        if (periodMatch) {
+            const period = periodMatch[1];
+            const suggestedHour = this.getSuggestedHourForPeriod(period);
+            return {
+                found: true,
+                value: { hour: suggestedHour, minute: 0 },
+                text: period,
+                type: 'period'
+            };
+        }
+
+        return { found: false, value: null, text: null, type: null };
+    }
+
+    // ✅ BUSCAR PROFISSIONAIS DISPONÍVEIS
+    async getAvailableProfessionals(userId, date, time) {
+        try {
+            console.log('👨‍⚕️ Buscando profissionais disponíveis para:', { date, time });
+
+            // Buscar todos os profissionais ativos
+            const { data: professionals, error } = await this.supabase
+                .from('professionals')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('is_active', true)
+                .eq('google_calendar_connected', true);
+
+            if (error) {
+                console.error('❌ Erro buscando profissionais:', error);
+                return [];
+            }
+
+            if (!professionals || professionals.length === 0) {
+                console.log('⚠️ Nenhum profissional encontrado');
+                return [];
+            }
+
+            // Verificar disponibilidade de cada profissional
+            const availableProfessionals = [];
+            
+            for (const professional of professionals) {
+                const isAvailable = await this.checkProfessionalAvailability(
+                    professional, date, time
+                );
+                
+                if (isAvailable) {
+                    availableProfessionals.push(professional);
+                }
+            }
+
+            console.log(`✅ ${availableProfessionals.length} profissionais disponíveis`);
+            return availableProfessionals;
+
+        } catch (error) {
+            console.error('❌ Erro geral buscando profissionais:', error);
+            return [];
+        }
+    }
+
+    // ✅ VERIFICAR DISPONIBILIDADE DO PROFISSIONAL
+    async checkProfessionalAvailability(professional, date, time) {
+        try {
+            // Verificar horário comercial
+            if (!this.isWithinBusinessHours(time)) {
+                return false;
+            }
+
+            // Verificar conflitos no Google Calendar (implementar se necessário)
+            // const hasConflict = await this.checkCalendarConflicts(professional, date, time);
+            
+            return true; // Por enquanto assume disponível se dentro do horário
 
         } catch (error) {
             console.error('❌ Erro verificando disponibilidade:', error);
-            return { available: false, conflicts: [], suggestedTimes: [] };
+            return false;
         }
     }
 
-    // 🔄 SUGERIR HORÁRIOS ALTERNATIVOS
-    async suggestAlternativeTimes(professionalId, requestedDateTime, limitSuggestions = 3) {
-        try {
-            console.log('🔄 Sugerindo horários alternativos...');
-            
-            const requestedDate = new Date(requestedDateTime);
-            const suggestions = [];
-            
-            // Tentar próximas 2 horas no mesmo dia
-            for (let i = 1; i <= 4; i++) {
-                const alternativeTime = new Date(requestedDate.getTime() + (i * 30 * 60000)); // +30 min cada
-                const availability = await this.checkAvailability(professionalId, alternativeTime, 60);
-                
-                if (availability.available) {
-                    suggestions.push({
-                        datetime: alternativeTime,
-                        formatted: alternativeTime.toLocaleString('pt-BR')
-                    });
-                    
-                    if (suggestions.length >= limitSuggestions) break;
-                }
-            }
-
-            // Se não encontrou no mesmo dia, tentar próximo dia útil
-            if (suggestions.length < limitSuggestions) {
-                const nextDay = new Date(requestedDate);
-                nextDay.setDate(nextDay.getDate() + 1);
-                nextDay.setHours(9, 0, 0, 0); // 9h da manhã
-
-                for (let i = 0; i < 8; i++) { // Tentar 8 horários (9h-17h)
-                    const alternativeTime = new Date(nextDay.getTime() + (i * 60 * 60000)); // +1h cada
-                    const availability = await this.checkAvailability(professionalId, alternativeTime, 60);
-                    
-                    if (availability.available) {
-                        suggestions.push({
-                            datetime: alternativeTime,
-                            formatted: alternativeTime.toLocaleString('pt-BR')
-                        });
-                        
-                        if (suggestions.length >= limitSuggestions) break;
-                    }
-                }
-            }
-
-            console.log('✅ Sugestões encontradas:', suggestions.length);
-            return suggestions;
-
-        } catch (error) {
-            console.error('❌ Erro sugerindo alternativas:', error);
-            return [];
-        }
-    }
-
-    // 📅 CRIAR AGENDAMENTO NO SISTEMA
+    // ✅ CRIAR AGENDAMENTO
     async createAppointment(appointmentData) {
         try {
-            console.log('📅 Criando agendamento...');
-            console.log('📋 Dados:', appointmentData);
+            console.log('📅 Criando agendamento:', appointmentData);
 
-            const { data: appointment, error } = await this.supabaseAdmin
+            const { data: appointment, error } = await this.supabase
                 .from('appointments')
-                .insert([{
+                .insert({
+                    user_id: appointmentData.userId,
                     contact_id: appointmentData.contactId,
                     professional_id: appointmentData.professionalId,
-                    service_id: appointmentData.serviceId,
-                    scheduled_at: appointmentData.scheduledAt,
+                    appointment_date: appointmentData.appointmentDate,
+                    appointment_time: appointmentData.appointmentTime,
                     status: 'confirmed',
                     source: 'telegram',
-                    created_at: new Date().toISOString(),
                     metadata: appointmentData.metadata || {}
-                }])
+                })
                 .select()
                 .single();
 
-            if (error) throw error;
-
-            console.log('✅ Agendamento criado com ID:', appointment.id);
-
-            // Tentar criar evento no Google Calendar também
-            try {
-                await this.createCalendarEvent(appointment, appointmentData);
-            } catch (calendarError) {
-                console.warn('⚠️ Erro criando evento no calendário:', calendarError.message);
+            if (error) {
+                console.error('❌ Erro criando agendamento:', error);
+                return null;
             }
 
-            return {
-                success: true,
-                appointment,
-                calendarEventCreated: true
-            };
+            console.log('✅ Agendamento criado com sucesso:', appointment.id);
+            return appointment;
 
         } catch (error) {
-            console.error('❌ Erro criando agendamento:', error);
-            return {
-                success: false,
-                error: error.message
-            };
+            console.error('❌ Erro geral criando agendamento:', error);
+            return null;
         }
     }
 
-    // 📅 CRIAR EVENTO NO GOOGLE CALENDAR
-    async createCalendarEvent(appointment, appointmentData) {
-        try {
-            console.log('📅 Criando evento no Google Calendar...');
-
-            // Buscar token do profissional
-            const { data: professional } = await this.supabaseAdmin
-                .from('professionals')
-                .select('google_calendar_email, user_id')
-                .eq('id', appointment.professional_id)
-                .single();
-
-            if (!professional?.google_calendar_email) {
-                throw new Error('Profissional não tem Google Calendar configurado');
-            }
-
-            // Buscar access token do usuário
-            const { data: user } = await this.supabaseAdmin
-                .from('users')
-                .select('google_access_token')
-                .eq('id', professional.user_id)
-                .single();
-
-            if (!user?.google_access_token) {
-                throw new Error('Token de acesso ao Google não encontrado');
-            }
-
-            // Preparar dados do evento
-            const startDateTime = new Date(appointment.scheduled_at);
-            const endDateTime = new Date(startDateTime.getTime() + 60 * 60000); // +1 hora
-
-            const eventData = {
-                summary: `Consulta - ${appointmentData.contactName || 'Cliente'}`,
-                description: `Agendamento via Telegram\nContato: ${appointmentData.contactPhone || 'N/A'}`,
-                start: {
-                    dateTime: startDateTime.toISOString(),
-                    timeZone: 'America/Sao_Paulo'
-                },
-                end: {
-                    dateTime: endDateTime.toISOString(),
-                    timeZone: 'America/Sao_Paulo'
-                }
-            };
-
-            // Criar evento no Google Calendar
-            const response = await axios.post(
-                'https://www.googleapis.com/calendar/v3/calendars/primary/events',
-                eventData,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${user.google_access_token}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-
-            console.log('✅ Evento criado no Google Calendar:', response.data.id);
-            return response.data;
-
-        } catch (error) {
-            console.error('❌ Erro criando evento no calendário:', error);
-            throw error;
-        }
-    }
-
-    // 🎯 PROCESSAR INTENÇÃO DE AGENDAMENTO COMPLETA
-    async processSchedulingIntent(messageText, contactId, userId, conversationState, historicalContext) {
-        try {
-            console.log('🎯 Processando intenção completa de agendamento...');
-
-            // 1. Detectar intenção específica
-            const intentionAnalysis = this.detectSchedulingIntent(messageText, conversationState, historicalContext);
-            
-            if (!intentionAnalysis.intention) {
-                return {
-                    success: false,
-                    message: 'Não consegui identificar a intenção de agendamento.'
-                };
-            }
-
-            // 2. Processar baseado na intenção detectada
-            switch (intentionAnalysis.intention) {
-                case 'scheduling':
-                    return await this.handleNewScheduling(intentionAnalysis, contactId, userId, messageText);
-                
-                case 'rescheduling':
-                    return await this.handleRescheduling(intentionAnalysis, contactId, userId, historicalContext);
-                
-                case 'cancellation':
-                    return await this.handleCancellation(contactId, userId, historicalContext);
-                
-                default:
-                    return {
-                        success: false,
-                        message: 'Tipo de agendamento não reconhecido.'
-                    };
-            }
-
-        } catch (error) {
-            console.error('❌ Erro processando intenção de agendamento:', error);
+    // ✅ GERAR RESPOSTA PARA AGENDAMENTO
+    generateSchedulingResponse(availableProfessionals, dateTimeInfo) {
+        if (availableProfessionals.length === 0) {
             return {
-                success: false,
-                message: 'Erro interno ao processar agendamento.',
-                error: error.message
+                type: 'no_professionals',
+                messages: [
+                    'Opa! 😔',
+                    'Infelizmente não temos profissionais disponíveis para esse horário.',
+                    'Que tal tentarmos outro dia ou horário?'
+                ]
             };
         }
-    }
 
-    // 🆕 LIDAR COM NOVO AGENDAMENTO
-    async handleNewScheduling(intentionAnalysis, contactId, userId, messageText) {
-        try {
-            const { dateTimeInfo, suggestedAction } = intentionAnalysis;
-
-            // Buscar profissionais disponíveis
-            const professionals = await this.getAvailableProfessionals(userId);
-            
-            if (professionals.length === 0) {
-                return {
-                    success: false,
-                    message: 'Desculpe, não temos profissionais disponíveis no momento.'
-                };
-            }
-
-            // Se tem data e hora específicas, verificar disponibilidade
-            if (dateTimeInfo.hasDate && dateTimeInfo.hasTime) {
-                // Processar data/hora específica
-                return await this.processSpecificDateTime(dateTimeInfo, professionals, contactId, userId);
-            }
-
-            // Se não tem informações específicas, mostrar opções
-            return this.showProfessionalOptions(professionals, dateTimeInfo);
-
-        } catch (error) {
-            console.error('❌ Erro lidando com novo agendamento:', error);
+        if (availableProfessionals.length === 1) {
+            const professional = availableProfessionals[0];
             return {
-                success: false,
-                message: 'Erro ao processar novo agendamento.'
+                type: 'single_professional',
+                messages: [
+                    'Perfeito! 🎉',
+                    `Temos o(a) ${professional.name} disponível para ${this.formatDateTime(dateTimeInfo)}.`,
+                    'Posso confirmar esse agendamento para você?'
+                ],
+                professional: professional
             };
         }
-    }
 
-    // 👨‍⚕️ MOSTRAR OPÇÕES DE PROFISSIONAIS
-    showProfessionalOptions(professionals, dateTimeInfo = null) {
-        let message = '👨‍⚕️ Temos os seguintes profissionais disponíveis:\n\n';
-        
-        professionals.forEach((prof, index) => {
-            message += `${index + 1}. *${prof.name}*`;
-            if (prof.speciality) {
-                message += ` - ${prof.speciality}`;
+        // Múltiplos profissionais
+        let professionalsList = '👨‍⚕️ <b>Profissionais disponíveis:</b>\n\n';
+        availableProfessionals.forEach((prof, index) => {
+            professionalsList += `${index + 1}. <b>${prof.name}</b>`;
+            if (prof.specialty) {
+                professionalsList += ` - ${prof.specialty}`;
             }
-            message += '\n';
+            professionalsList += '\n';
         });
 
-        message += '\n💬 Digite o número do profissional que você prefere ou me diga suas preferências!';
-
-        if (dateTimeInfo?.hasDate || dateTimeInfo?.hasTime) {
-            message += `\n\n📅 Detectei que você mencionou: ${dateTimeInfo.extractedDate || ''} ${dateTimeInfo.extractedTime || ''}`;
-        }
-
         return {
-            success: true,
-            message,
-            needsUserSelection: true,
-            selectionType: 'professional',
-            options: professionals
+            type: 'multiple_professionals',
+            messages: [
+                'Ótimo! 😊',
+                `Temos ${availableProfessionals.length} profissionais disponíveis para ${this.formatDateTime(dateTimeInfo)}.`,
+                professionalsList,
+                'Digite o número ou nome do profissional de sua preferência:'
+            ],
+            professionals: availableProfessionals
         };
+    }
+
+    // ✅ UTILITÁRIOS
+    getNextWeekday(targetDay) {
+        const today = new Date();
+        const currentDay = today.getDay();
+        const daysUntilTarget = (targetDay - currentDay + 7) % 7;
+        const resultDate = new Date(today);
+        resultDate.setDate(today.getDate() + (daysUntilTarget === 0 ? 7 : daysUntilTarget));
+        return resultDate;
+    }
+
+    getSuggestedHourForPeriod(period) {
+        const suggestions = {
+            manhã: 9,
+            tarde: 14,
+            noite: 19
+        };
+        return suggestions[period] || 14;
+    }
+
+    isWithinBusinessHours(time) {
+        if (!time || !time.hour) return true; // Se não especificou hora, assume OK
+        
+        const hour = time.hour;
+        return hour >= 8 && hour <= 18; // 8h às 18h
+    }
+
+    formatDateTime(dateTimeInfo) {
+        let result = '';
+        
+        if (dateTimeInfo.hasDate) {
+            result += dateTimeInfo.dateText || 'a data solicitada';
+        }
+        
+        if (dateTimeInfo.hasTime) {
+            if (result) result += ' às ';
+            result += dateTimeInfo.timeText || 'o horário solicitado';
+        }
+        
+        return result || 'o horário solicitado';
+    }
+
+    calculateConfidence(text, hasIntent) {
+        if (!hasIntent) return 0;
+        
+        let confidence = 0.5; // Base
+        
+        // Aumentar confiança baseado em palavras-chave específicas
+        if (text.includes('agendar') || text.includes('marcar')) confidence += 0.3;
+        if (text.includes('consulta')) confidence += 0.2;
+        if (text.includes('horário') || text.includes('hora')) confidence += 0.1;
+        
+        return Math.min(confidence, 1.0);
+    }
+
+    suggestAction(dateTimeInfo, conversationState) {
+        if (!dateTimeInfo.hasDate && !dateTimeInfo.hasTime) {
+            return 'collect_datetime';
+        } else if (!dateTimeInfo.hasDate) {
+            return 'collect_date';
+        } else if (!dateTimeInfo.hasTime) {
+            return 'collect_time';
+        } else {
+            return 'show_professionals';
+        }
     }
 }
 

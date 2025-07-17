@@ -1,226 +1,239 @@
-// 🎯 OBJETIVO: Tornar conversas naturais com pausas e "digitando..."
+// ===============================================
+// ⏱️ CORREÇÃO 3: TIMING NATURAL E "DIGITANDO..."
+// ===============================================
+// 📍 ARQUIVO: apps/api/src/services/natural-timing.js
+// 🎯 OBJETIVO: Tornar conversas naturais com pausas e typing
 
-const axios = require('axios');
+const fetch = require('node-fetch');
 
 class NaturalTiming {
     constructor() {
-        this.typingSimulation = true; // Ativar simulação de digitação
-        this.averageTypingSpeed = 40; // Palavras por minuto (realista para uma pessoa)
+        this.baseUrl = 'https://api.telegram.org/bot';
     }
 
-    // ⏱️ CALCULAR TEMPO REALISTA DE DIGITAÇÃO
-    calculateTypingTime(text) {
-        if (!text) return 1000;
-        
-        const wordCount = text.split(' ').length;
-        const charactersCount = text.length;
-        
-        // Tempo baseado em velocidade de digitação humana (40 WPM)
-        const wordsTime = (wordCount / this.averageTypingSpeed) * 60 * 1000;
-        
-        // Tempo mínimo baseado em caracteres (40 chars por segundo)
-        const charsTime = (charactersCount / 40) * 1000;
-        
-        // Usar o maior dos dois + tempo de "pensar"
-        const baseTime = Math.max(wordsTime, charsTime);
-        const thinkingTime = Math.random() * 2000 + 1000; // 1-3 segundos para "pensar"
-        
-        const totalTime = baseTime + thinkingTime;
-        
-        // Limitar entre 2-8 segundos para ser realista
-        return Math.min(Math.max(totalTime, 2000), 8000);
-    }
+    // ✅ ENVIAR MÚLTIPLAS MENSAGENS COM TIMING NATURAL
+    async sendConversationalMessages(messages, botToken, chatId, options = {}) {
+        try {
+            console.log('💬 Enviando conversa natural:', messages.length, 'mensagens');
 
-    // 💬 QUEBRAR MENSAGEM LONGA EM MÚLTIPLAS MENSAGENS
-    breakIntoNaturalMessages(longText) {
-        if (!longText || longText.length < 100) {
-            return [longText];
-        }
-
-        const sentences = longText.split(/[.!?]+/).filter(s => s.trim());
-        const messages = [];
-        let currentMessage = '';
-
-        for (const sentence of sentences) {
-            const trimmedSentence = sentence.trim();
-            if (!trimmedSentence) continue;
-
-            // Se adicionar esta frase deixaria a mensagem muito longa, quebrar
-            if (currentMessage.length + trimmedSentence.length > 150) {
-                if (currentMessage) {
-                    messages.push(currentMessage.trim() + '.');
-                    currentMessage = '';
-                }
+            if (!Array.isArray(messages)) {
+                messages = [messages];
             }
 
-            currentMessage += trimmedSentence + '. ';
-        }
-
-        // Adicionar última mensagem se houver
-        if (currentMessage.trim()) {
-            messages.push(currentMessage.trim());
-        }
-
-        // Se não conseguiu quebrar, retornar original
-        return messages.length > 0 ? messages : [longText];
-    }
-
-    // 🎬 SIMULAR AÇÃO "DIGITANDO..." NO TELEGRAM
-    async showTypingIndicator(botToken, chatId, duration = 3000) {
-        try {
-            console.log('⌨️ Simulando "digitando..." por', duration, 'ms');
-            
-            const apiUrl = `https://api.telegram.org/bot${botToken}/sendChatAction`;
-            
-            await axios.post(apiUrl, {
-                chat_id: chatId,
-                action: 'typing'
-            });
-
-            // Manter indicador por tempo calculado
-            await this.sleep(Math.min(duration, 5000)); // Máximo 5 segundos
-            
-        } catch (error) {
-            console.error('❌ Erro simulando digitação:', error.message);
-        }
-    }
-
-    // 💤 FUNÇÃO DE PAUSA
-    async sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    // 📤 ENVIAR MENSAGENS COM TIMING NATURAL
-    async sendNaturalMessages(botToken, chatId, messages) {
-        try {
-            console.log('📤 Enviando', messages.length, 'mensagens com timing natural');
-            
-            const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
-            
             for (let i = 0; i < messages.length; i++) {
                 const message = messages[i];
-                if (!message?.trim()) continue;
-
-                console.log(`📨 Mensagem ${i + 1}/${messages.length}:`, message);
-
-                // 1. MOSTRAR "DIGITANDO..." ANTES DE CADA MENSAGEM
-                if (this.typingSimulation) {
-                    const typingDuration = this.calculateTypingTime(message);
-                    await this.showTypingIndicator(botToken, chatId, typingDuration);
-                }
-
-                // 2. ENVIAR A MENSAGEM
-                await axios.post(apiUrl, {
-                    chat_id: chatId,
-                    text: message,
-                    parse_mode: 'HTML'
-                });
-
-                console.log('✅ Mensagem enviada');
-
-                // 3. PAUSA ENTRE MENSAGENS (se houver mais)
+                
+                // 1. Mostrar "digitando..." antes de cada mensagem
+                await this.sendTypingAction(botToken, chatId);
+                
+                // 2. Pausa natural baseada no tamanho da mensagem
+                const typingDuration = this.calculateTypingDuration(message);
+                await this.sleep(typingDuration);
+                
+                // 3. Enviar a mensagem
+                await this.sendMessage(botToken, chatId, message, options);
+                
+                // 4. Pausa entre mensagens (se não for a última)
                 if (i < messages.length - 1) {
-                    const pauseBetweenMessages = Math.random() * 2000 + 1000; // 1-3 segundos
-                    console.log('⏸️ Pausa entre mensagens:', pauseBetweenMessages, 'ms');
-                    await this.sleep(pauseBetweenMessages);
+                    const pauseBetween = this.calculatePauseBetweenMessages();
+                    await this.sleep(pauseBetween);
                 }
             }
 
-            console.log('🎉 Todas as mensagens enviadas com timing natural!');
+            console.log('✅ Conversa natural enviada com sucesso');
             return true;
 
         } catch (error) {
-            console.error('❌ Erro enviando mensagens naturais:', error);
+            console.error('❌ Erro enviando conversa natural:', error);
             return false;
         }
     }
 
-    // 🎯 FUNÇÃO PRINCIPAL: PROCESSAR E ENVIAR COM TIMING NATURAL
-    async processAndSendNaturally(botToken, chatId, responseText) {
+    // ✅ MOSTRAR "DIGITANDO..."
+    async sendTypingAction(botToken, chatId) {
         try {
-            if (!responseText?.trim()) {
-                console.log('⚠️ Texto de resposta vazio');
-                return false;
+            const response = await fetch(`${this.baseUrl}${botToken}/sendChatAction`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    action: 'typing'
+                })
+            });
+
+            if (!response.ok) {
+                console.warn('⚠️ Falha ao enviar typing action');
             }
-
-            console.log('🎬 Iniciando processamento natural da resposta');
-            console.log('📝 Texto original:', responseText);
-
-            // 1. QUEBRAR EM MENSAGENS NATURAIS
-            const messages = this.breakIntoNaturalMessages(responseText);
-            console.log('🔄 Quebrado em', messages.length, 'mensagens');
-
-            // 2. ENVIAR COM TIMING NATURAL
-            const success = await this.sendNaturalMessages(botToken, chatId, messages);
-
-            return success;
 
         } catch (error) {
-            console.error('❌ Erro no processamento natural:', error);
+            console.warn('⚠️ Erro enviando typing action:', error.message);
+        }
+    }
+
+    // ✅ CALCULAR DURAÇÃO DO "DIGITANDO" BASEADO NO TEXTO
+    calculateTypingDuration(message) {
+        const words = message.split(' ').length;
+        const characters = message.length;
+        
+        // Simular velocidade de digitação humana (150-200 CPM)
+        const baseTime = Math.max(characters * 50, 1000); // Mínimo 1 segundo
+        const wordBonus = words * 200; // 200ms por palavra
+        
+        // Adicionar aleatoriedade para parecer mais humano
+        const randomFactor = 0.5 + Math.random() * 0.5; // 50% - 100%
+        
+        const finalDuration = Math.min(
+            (baseTime + wordBonus) * randomFactor,
+            4000 // Máximo 4 segundos
+        );
+
+        console.log(`⏱️ Typing duration: ${Math.round(finalDuration)}ms para "${message.substring(0, 30)}..."`);
+        return finalDuration;
+    }
+
+    // ✅ CALCULAR PAUSA ENTRE MENSAGENS
+    calculatePauseBetweenMessages() {
+        // Pausa natural entre 800ms e 2000ms
+        return 800 + Math.random() * 1200;
+    }
+
+    // ✅ QUEBRAR MENSAGEM LONGA EM MÚLTIPLAS MENSAGENS
+    breakIntoNaturalMessages(longMessage, maxLength = 150) {
+        if (longMessage.length <= maxLength) {
+            return [longMessage];
+        }
+
+        const sentences = longMessage.split(/[.!?]\s+/);
+        const messages = [];
+        let currentMessage = '';
+
+        for (const sentence of sentences) {
+            const sentenceWithPunc = sentence + (sentence.match(/[.!?]$/) ? '' : '.');
             
-            // FALLBACK: Enviar mensagem diretamente se der erro
-            try {
-                const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
-                await axios.post(apiUrl, {
+            if ((currentMessage + sentenceWithPunc).length <= maxLength) {
+                currentMessage += (currentMessage ? ' ' : '') + sentenceWithPunc;
+            } else {
+                if (currentMessage) {
+                    messages.push(currentMessage.trim());
+                }
+                currentMessage = sentenceWithPunc;
+            }
+        }
+
+        if (currentMessage) {
+            messages.push(currentMessage.trim());
+        }
+
+        return messages.length > 0 ? messages : [longMessage];
+    }
+
+    // ✅ ADICIONAR NATURALIDADE À RESPOSTA
+    addNaturalVariations(response) {
+        // Adicionar conectores naturais
+        const connectors = ['Então', 'Bem', 'Certo', 'Ok', 'Perfeito'];
+        const emoji = ['😊', '🤗', '👍', '✨', '💙'];
+        
+        if (Math.random() > 0.7) { // 30% chance
+            const connector = connectors[Math.floor(Math.random() * connectors.length)];
+            response = connector + ', ' + response.toLowerCase();
+        }
+
+        if (Math.random() > 0.8) { // 20% chance
+            const emoticon = emoji[Math.floor(Math.random() * emoji.length)];
+            response += ' ' + emoticon;
+        }
+
+        return response;
+    }
+
+    // ✅ ENVIAR MENSAGEM ÚNICA
+    async sendMessage(botToken, chatId, text, options = {}) {
+        try {
+            const response = await fetch(`${this.baseUrl}${botToken}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                     chat_id: chatId,
-                    text: responseText,
-                    parse_mode: 'HTML'
-                });
-                console.log('✅ Mensagem enviada via fallback');
-                return true;
-            } catch (fallbackError) {
-                console.error('❌ Erro no fallback também:', fallbackError);
+                    text: text,
+                    parse_mode: options.parse_mode || 'HTML',
+                    reply_markup: options.reply_markup || undefined
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                console.error('❌ Erro enviando mensagem:', result);
                 return false;
             }
+
+            return result;
+
+        } catch (error) {
+            console.error('❌ Erro na requisição de mensagem:', error);
+            return false;
         }
     }
 
-    // 🎨 ADICIONAR VARIAÇÕES NATURAIS À RESPOSTA
-    addNaturalVariations(text) {
-        // Adicionar pequenas hesitações e variações humanas
-        const variations = {
-            'Ok': ['Ok', 'Tudo bem', 'Perfeito', 'Entendi'],
-            'Sim': ['Sim', 'Claro', 'Com certeza', 'Isso mesmo'],
-            'Não': ['Não', 'Não mesmo', 'Negativo', 'Nem pensar'],
-            'Obrigado': ['Obrigado', 'Valeu', 'Muito obrigado', 'Agradeço']
+    // ✅ PAUSA (SLEEP)
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // ✅ TIMING ADAPTATIVO BASEADO NO TIPO DE RESPOSTA
+    getTimingForResponseType(responseType) {
+        const timings = {
+            greeting: { typing: 1000, pause: 500 },
+            scheduling: { typing: 2000, pause: 800 },
+            confirmation: { typing: 1500, pause: 600 },
+            error: { typing: 800, pause: 400 },
+            help: { typing: 2500, pause: 1000 },
+            default: { typing: 1200, pause: 600 }
         };
 
-        let variedText = text;
-        
-        // Aplicar variações aleatórias
-        Object.entries(variations).forEach(([original, options]) => {
-            if (variedText.includes(original)) {
-                const randomVariation = options[Math.floor(Math.random() * options.length)];
-                variedText = variedText.replace(original, randomVariation);
-            }
-        });
-
-        // Adicionar pausas naturais ocasionais
-        if (Math.random() < 0.3) { // 30% de chance
-            const pausePhrases = ['Bem...', 'Vamos ver...', 'Deixe-me verificar...', 'Hmm...'];
-            const randomPause = pausePhrases[Math.floor(Math.random() * pausePhrases.length)];
-            variedText = randomPause + ' ' + variedText;
-        }
-
-        return variedText;
+        return timings[responseType] || timings.default;
     }
 
-    // 🕒 DETERMINAR MELHOR HORÁRIO PARA RESPOSTA
-    getSociallyAppropriateDelay() {
-        const now = new Date();
-        const hour = now.getHours();
+    // ✅ CRIAR RESPOSTA CONVERSACIONAL COMPLETA
+    async createConversationalResponse(analysis, context, responseType = 'default') {
+        const timing = this.getTimingForResponseType(responseType);
         
-        // Delays baseados no horário (simular comportamento humano)
-        if (hour >= 22 || hour <= 6) {
-            // Noite/madrugada - resposta mais demorada
-            return Math.random() * 5000 + 3000; // 3-8 segundos
-        } else if (hour >= 12 && hour <= 14) {
-            // Horário de almoço - resposta um pouco mais demorada
-            return Math.random() * 4000 + 2000; // 2-6 segundos
+        // Quebrar resposta em mensagens naturais se for muito longa
+        let messages = [];
+        
+        if (analysis.response && analysis.response.length > 120) {
+            messages = this.breakIntoNaturalMessages(analysis.response);
         } else {
-            // Horário comercial normal
-            return Math.random() * 3000 + 1000; // 1-4 segundos
+            messages = [analysis.response];
         }
+
+        // Adicionar variações naturais
+        messages = messages.map(msg => this.addNaturalVariations(msg));
+
+        return {
+            messages: messages,
+            timing: timing,
+            totalDuration: messages.length * timing.typing + (messages.length - 1) * timing.pause
+        };
+    }
+
+    // ✅ SIMULAR CONVERSA HUMANA COMPLETA
+    async simulateHumanConversation(botToken, chatId, responseData) {
+        console.log('🤖➡️👤 Simulando conversa humana natural');
+
+        const conversationResponse = await this.createConversationalResponse(
+            responseData.analysis,
+            responseData.context,
+            responseData.type
+        );
+
+        await this.sendConversationalMessages(
+            conversationResponse.messages,
+            botToken,
+            chatId
+        );
+
+        return conversationResponse;
     }
 }
 
