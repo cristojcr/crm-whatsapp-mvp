@@ -30,38 +30,28 @@ class TelegramProcessor {
         try {
             console.log('⚙️ Buscando configuração do bot para usuário:', userId);
             
-            // BUSCAR channel_config JSON
-            const { data, error } = await this.supabase
+            const { data: channelConfig, error } = await this.supabase
                 .from('user_channels')
                 .select('channel_config')
                 .eq('user_id', userId)
                 .eq('channel_type', 'telegram')
                 .single();
 
-            if (error) {
-                console.error('❌ Erro buscando configuração:', error);
+            if (error || !channelConfig?.channel_config) {
+                console.error('❌ Bot token não encontrado:', error);
                 return null;
             }
 
-            if (!data?.channel_config) {
-                console.error('❌ channel_config não encontrado');
-                return null;
-            }
-
-            // EXTRAIR bot_token do JSON
-            const config = data.channel_config;
-            const botToken = config.bot_token || config.token || config.telegram_bot_token;
-
+            const botToken = channelConfig.channel_config.bot_token;
             if (!botToken) {
-                console.error('❌ Bot token não encontrado no config:', config);
+                console.error('❌ Bot token não encontrado no config');
                 return null;
             }
 
             console.log('✅ Bot token encontrado');
             return { bot_token: botToken };
-
         } catch (error) {
-            console.error('❌ Erro geral:', error);
+            console.error('❌ Erro:', error);
             return null;
         }
     }
