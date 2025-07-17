@@ -204,6 +204,9 @@ class TelegramProcessor {
         try {
             console.log('📱 Processando update Telegram...');
             console.log('📋 Body recebido:', JSON.stringify(req.body, null, 2));
+            console.log('🐛 DEBUG - update completo:', JSON.stringify(update, null, 2));
+            console.log('🐛 DEBUG - update.message:', update.message);
+            console.log('🐛 DEBUG - update.message?.from:', update.message?.from);
             
             const result = await this.processMessage(req, res);
             

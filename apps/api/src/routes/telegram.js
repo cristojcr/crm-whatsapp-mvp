@@ -421,6 +421,8 @@ router.post('/webhook/:userId', async (req, res) => {
         const update = req.body;
         
         console.log('📱 Webhook recebido:', { userId, hasMessage: !!update.message });
+        console.log('🐛 DEBUG - req.body webhook:', JSON.stringify(req.body, null, 2));
+        console.log('🐛 DEBUG - req.params.userId:', req.params.userId);
 
         if (update.message) {
             // Usar o telegram-processor que já tem IA integrada!
