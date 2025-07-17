@@ -30,7 +30,6 @@ class TelegramProcessor {
         try {
             console.log('⚙️ Buscando configuração do bot para usuário:', userId);
             
-            // BUSCAR em user_channels com channel_config JSON
             const { data: channelConfig, error } = await this.supabase
                 .from('user_channels')
                 .select('channel_config')
@@ -39,7 +38,7 @@ class TelegramProcessor {
                 .single();
 
             if (error || !channelConfig?.channel_config) {
-                console.error('❌ Bot token não encontrado');
+                console.error('❌ Configuração não encontrada:', error);
                 return null;
             }
 
@@ -51,6 +50,7 @@ class TelegramProcessor {
                 return null;
             }
 
+            console.log('✅ Bot token encontrado');
             return { bot_token: botToken };
             
         } catch (error) {
@@ -328,7 +328,7 @@ class TelegramProcessor {
             }
 
             // FLUXO DE CONVERSA GERAL COM MEMÓRIA
-            const analysis = await this.intentionAnalyzer.analyze(text, contact.id, userId);
+            const analysis = await this.intentionAnalyzer.analyzeWithProfessionalPreference(text, contact.id, userId);
 
             // DETERMINAR PRÓXIMO ESTADO
             const nextState = this.conversationStates.determineNextState(
