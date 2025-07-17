@@ -329,10 +329,6 @@ class TelegramProcessor {
 
             // FLUXO DE CONVERSA GERAL COM MEMÓRIA
             const analysis = await this.intentionAnalyzer.analyze(text, contact.id, userId);
-                conversationHistory: memoryContext.context,
-                customerStage: memoryContext.relationshipStage,
-                shouldGreet: memoryContext.shouldGreet && !memoryContext.isNewCustomer
-            });
 
             // DETERMINAR PRÓXIMO ESTADO
             const nextState = this.conversationStates.determineNextState(
