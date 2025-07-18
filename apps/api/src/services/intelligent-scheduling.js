@@ -20,24 +20,35 @@ class IntelligentScheduling {
         
         console.log('🔍 Analisando intenção de agendamento:', text);
 
-        const schedulingKeywords = [
-            'agendar', 'marcar', 'consulta', 'horário', 'hora',
-            'amanhã', 'hoje', 'semana', 'segunda', 'terça', 'quarta',
-            'quinta', 'sexta', 'sábado', 'domingo', 'dia'
-        ];
+        // Palavras-chave FORTES (sempre indicam agendamento)
+        const strongKeywords = ['agendar', 'marcar', 'consulta', 'horário', 'appointment', 'schedule'];
+        
+        // Verificar palavras-chave fortes
+        const hasStrongIntent = strongKeywords.some(keyword => text.includes(keyword));
+        
+        // Para palavras como "hoje", "amanhã", só considerar agendamento se há contexto específico
+        const timeWords = ['hoje', 'amanhã', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'];
+        const hasTimeWord = timeWords.some(word => text.includes(word));
+        const hasSchedulingContext = text.includes('para') || text.includes('às') || text.includes('hora') || 
+                                    text.includes('h') || text.includes('marcar') || text.includes('agendar');
+        
+        const hasWeakIntent = hasTimeWord && hasSchedulingContext;
 
-        const hasSchedulingIntent = schedulingKeywords.some(keyword => 
-            text.includes(keyword)
-        );
+        // Só considera agendamento se tem palavra forte OU (palavra de tempo + contexto)
+        const hasSchedulingIntent = hasStrongIntent || hasWeakIntent;
 
-        // Extrair informações de data e hora
-        const dateTimeInfo = this.extractDateTimeInfo(text);
+        // Extrair informações de data e hora apenas se realmente é agendamento
+        const dateTimeInfo = hasSchedulingIntent ? this.extractDateTimeInfo(text) : {
+            hasDate: false,
+            hasTime: false,
+            isComplete: false
+        };
         
         return {
             hasIntent: hasSchedulingIntent,
             confidence: this.calculateConfidence(text, hasSchedulingIntent),
             dateTimeInfo: dateTimeInfo,
-            suggestedAction: this.suggestAction(dateTimeInfo, conversationState)
+            suggestedAction: hasSchedulingIntent ? this.suggestAction(dateTimeInfo, conversationState) : 'general_conversation'
         };
     }
 
