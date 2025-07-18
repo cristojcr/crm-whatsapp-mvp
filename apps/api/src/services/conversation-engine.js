@@ -175,7 +175,7 @@ class ConversationEngine {
         }
     }
 
-    // Enviar mensagem individual
+    // Enviar mensagem individual...
     async sendMessage(chatId, text, botToken, options = {}) {
         try {
             const response = await this.axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
