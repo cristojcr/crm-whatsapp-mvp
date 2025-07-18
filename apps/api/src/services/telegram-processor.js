@@ -403,7 +403,7 @@ class TelegramProcessor {
                     await new Promise(resolve => setTimeout(resolve, step.duration));
                 } else if (step.type === 'message') {
                     // Usar o método de envio do ConversationEngine ou um próprio
-                    await this.conversationEngine.sendMessage(botConfig.bot_token, chatId, step.content, { parse_mode: 'Markdown' });
+                    await this.conversationEngine.sendMessage(chatId, step.content, botConfig.bot_token, { parse_mode: 'Markdown' });
                 } else if (step.type === 'pause') {
                     await new Promise(resolve => setTimeout(resolve, step.duration));
                 }
