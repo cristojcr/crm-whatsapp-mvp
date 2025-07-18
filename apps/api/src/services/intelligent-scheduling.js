@@ -379,6 +379,48 @@ class IntelligentScheduling {
             return 'show_professionals';
         }
     }
+
+    async requestMissingInfo(dateTimeInfo, conversationState) {
+        console.log('📝 Solicitando informações faltantes:', dateTimeInfo);
+
+        if (!dateTimeInfo.hasDate && !dateTimeInfo.hasTime) {
+            return {
+                type: 'collect_datetime',
+                messages: [
+                    'Claro! Vou te ajudar com o agendamento! 😊',
+                    'Para qual data e horário você gostaria de agendar?',
+                    'Pode me dizer algo como "amanhã às 14h" ou "segunda-feira de manhã".'
+                ]
+            };
+        } else if (!dateTimeInfo.hasDate) {
+            return {
+                type: 'collect_date',
+                messages: [
+                    `Perfeito! Você quer agendar para ${dateTimeInfo.timeText}. 👍`,
+                    'Agora me diga para qual dia:',
+                    'Pode ser "hoje", "amanhã", "segunda-feira", ou uma data como "15/07".'
+                ]
+            };
+        } else if (!dateTimeInfo.hasTime) {
+            return {
+                type: 'collect_time',
+                messages: [
+                    `Ótimo! Você quer agendar para ${dateTimeInfo.dateText}. 📅`,
+                    'Que horário você prefere?',
+                    'Pode me dizer "14h", "14:30", "de manhã", "à tarde", etc.'
+                ]
+            };
+        } else {
+            // Tem data e hora, buscar profissionais
+            return {
+                type: 'show_professionals',
+                messages: [
+                    'Perfeito! Tenho todas as informações. 🎯',
+                    'Deixe-me verificar os profissionais disponíveis...'
+                ]
+            };
+        }
+    }
 }
 
 module.exports = IntelligentScheduling;
