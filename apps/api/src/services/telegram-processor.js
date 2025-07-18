@@ -321,12 +321,12 @@ class TelegramProcessor {
             console.log('🧠 Processando com contexto completo');
             const intentionAnalyzer = require('./intention-analyzer'); // Carrega o módulo aqui
 
-            // FLUXO DE AGENDAMENTO INTELIGENTE
-            if (schedulingAnalysis.hasIntent || currentState.includes('scheduling') || currentState.includes('collecting')) {
-                return await this.handleIntelligentScheduling(
-                    text, contact, conversation, userId, schedulingAnalysis, currentState
-                );
-            }
+        // FLUXO APENAS PARA ESTADOS EXPLÍCITOS DE AGENDAMENTO
+        if (currentState.includes('scheduling') || currentState.includes('collecting')) {
+            return await this.handleIntelligentScheduling(
+                text, contact, conversation, userId, null, currentState
+            );
+        }
 
             // FLUXO DE CONVERSA GERAL COM MEMÓRIA
             // ✅ CORREÇÃO APLICADA AQUI
@@ -456,14 +456,12 @@ class TelegramProcessor {
             const currentState = await this.conversationStates.getCurrentState(conversation.id);
             console.log('📊 Estado atual da conversa:', currentState);
 
-            // 4. ANÁLISE INTELIGENTE DE AGENDAMENTO
-            const schedulingAnalysis = await this.intelligentScheduling.analyzeSchedulingIntent(
-                text, currentState
-            );
+            // 4. ANÁLISE COGNITIVA PURA (SEM PALAVRAS-CHAVE)
+            console.log('🧠 Usando apenas análise cognitiva da IA');
 
-            // 5. PROCESSAR BASEADO NO CONTEXTO E ESTADO
+            // 5. PROCESSAR APENAS COM IA COGNITIVA
             const response = await this.processWithContextAndState(
-                text, contact, conversation, userId, memoryContext, currentState, schedulingAnalysis
+                text, contact, conversation, userId, memoryContext, currentState, null
             );
 
             // 6. ENVIAR RESPOSTA COM TIMING NATURAL

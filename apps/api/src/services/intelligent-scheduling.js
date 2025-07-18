@@ -14,59 +14,41 @@ class IntelligentScheduling {
         );
     }
 
-    // ✅ ANALISAR INTENÇÃO DE AGENDAMENTO
+    // ✅ ANÁLISE COGNITIVA PURA (SEM PALAVRAS-CHAVE)
     async analyzeSchedulingIntent(message, conversationState) {
-        const text = message.toLowerCase();
+        console.log('🧠 Usando análise cognitiva pura (sem palavras-chave)');
         
-        console.log('🔍 Analisando intenção de agendamento:', text);
-
-        // Palavras-chave FORTES (sempre indicam agendamento)
-        const strongKeywords = ['agendar', 'marcar', 'consulta', 'horário', 'appointment', 'schedule'];
-        
-        // Verificar palavras-chave fortes
-        const hasStrongIntent = strongKeywords.some(keyword => text.includes(keyword));
-        
-        // Para palavras como "hoje", "amanhã", só considerar agendamento se há contexto específico
-        const timeWords = ['hoje', 'amanhã', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'];
-        const hasTimeWord = timeWords.some(word => text.includes(word));
-        const hasSchedulingContext = text.includes('para') || text.includes('às') || text.includes('hora') || 
-                                    text.includes('h') || text.includes('marcar') || text.includes('agendar');
-        
-        const hasWeakIntent = hasTimeWord && hasSchedulingContext;
-
-        // Só considera agendamento se tem palavra forte OU (palavra de tempo + contexto)
-        const hasSchedulingIntent = hasStrongIntent || hasWeakIntent;
-
-        // Extrair informações de data e hora apenas se realmente é agendamento
-        const dateTimeInfo = hasSchedulingIntent ? this.extractDateTimeInfo(text) : {
-            hasDate: false,
-            hasTime: false,
-            isComplete: false
-        };
+        // Não fazemos mais análise de palavras-chave aqui
+        // Deixamos tudo para a IA cognitiva do intention-analyzer
         
         return {
-            hasIntent: hasSchedulingIntent,
-            confidence: this.calculateConfidence(text, hasSchedulingIntent),
-            dateTimeInfo: dateTimeInfo,
-            suggestedAction: hasSchedulingIntent ? this.suggestAction(dateTimeInfo, conversationState) : 'general_conversation'
+            hasIntent: false, // Sempre false - deixa a IA decidir
+            confidence: 0,
+            dateTimeInfo: {
+                hasDate: false,
+                hasTime: false,
+                isComplete: false
+            },
+            suggestedAction: 'use_cognitive_analysis'
         };
     }
 
-    // ✅ EXTRAIR INFORMAÇÕES DE DATA E HORA
-    extractDateTimeInfo(text) {
-        const dateInfo = this.extractDate(text);
-        const timeInfo = this.extractTime(text);
-        
-        return {
-            hasDate: dateInfo.found,
-            hasTime: timeInfo.found,
-            date: dateInfo.value,
-            time: timeInfo.value,
-            dateText: dateInfo.text,
-            timeText: timeInfo.text,
-            isComplete: dateInfo.found && timeInfo.found
-        };
-    }
+
+        // ✅ EXTRAIR INFORMAÇÕES DE DATA E HORA
+        extractDateTimeInfo(text) {
+            const dateInfo = this.extractDate(text);
+            const timeInfo = this.extractTime(text);
+            
+            return {
+                hasDate: dateInfo.found,
+                hasTime: timeInfo.found,
+                date: dateInfo.value,
+                time: timeInfo.value,
+                dateText: dateInfo.text,
+                timeText: timeInfo.text,
+                isComplete: dateInfo.found && timeInfo.found
+            };
+        }
 
     // ✅ EXTRAIR DATA
     extractDate(text) {
