@@ -39,7 +39,7 @@ class ConversationEngine {
         CLIENTE:
         - Nome: ${customerName}
         - Hora do dia: ${timeOfDay}
-        - Histórico: ${context.hasHistory ? 'cliente já conhecido' : 'primeira conversa'}
+        - Histórico: ${context.relationshipStage === 'loyal_customer' || context.previousMessages?.length > 1 ? 'cliente já conhecido' : 'primeira conversa'}
 
         SITUAÇÃO ATUAL: ${intention}`;
 

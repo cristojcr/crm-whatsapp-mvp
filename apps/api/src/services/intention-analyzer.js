@@ -28,62 +28,97 @@ Responda APENAS com uma das seguintes categorias de intenção:
 Qual é a intenção?`;
 }
 
+function extractDateTime(message) {
+  try {
+    console.log('🕐 Extraindo data/hora localmente (fallback):', message);
+    
+    const now = new Date();
+    const patterns = {
+      tomorrow: /\b(amanhã|amanha)\b/gi,
+      today: /\b(hoje)\b/gi,
+      time: /\b(\d{1,2}):?(\d{0,2})\s?(h|hs|horas?)?\b/gi
+    };
+    
+    let suggestedDate = null;
+    let suggestedTime = null;
+    
+    // Detectar data
+    if (patterns.tomorrow.test(message)) {
+      suggestedDate = new Date(now);
+      suggestedDate.setDate(now.getDate() + 1);
+    } else if (patterns.today.test(message)) {
+      suggestedDate = new Date(now);
+    }
+    
+    // Detectar horário
+    const timeMatch = message.match(patterns.time);
+    if (timeMatch && timeMatch.length > 0) {
+      const timeStr = timeMatch[0];
+      const timeDigits = timeStr.match(/\d+/g);
+      if (timeDigits && timeDigits.length > 0) {
+        const hour = parseInt(timeDigits[0]);
+        const minute = timeDigits.length > 1 ? parseInt(timeDigits[1]) : 0;
+        
+        if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+          suggestedTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        }
+      }
+    }
+    
+    return {
+      suggestedDate: suggestedDate ? suggestedDate.toISOString().split('T')[0] : null,
+      suggestedTime: suggestedTime,
+      hasDateReference: suggestedDate !== null,
+      hasTimeReference: suggestedTime !== null
+    };
+    
+  } catch (error) {
+    console.error('❌ Erro ao extrair data/hora:', error);
+    return {
+      suggestedDate: null,
+      suggestedTime: null,
+      hasDateReference: false,
+      hasTimeReference: false
+    };
+  }
+}
+
 // FUNÇÃO PRINCIPAL DE ANÁLISE (A ÚNICA QUE PRECISAMOS)
 async function analyze(messageContent, context = {}) {
     try {
         const prompt = buildAnalysisPrompt(messageContent);
 
-        const response = await fetch(`${process.env.DEEPSEEK_BASE_URL}/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'deepseek-chat',
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.2,
-            })
-        });
-
-        if (!response.ok) {
-            console.error('❌ Erro na API DeepSeek:', response.statusText);
-            return { intention: 'general', provider: 'fallback' };
-        }
-
-        const aiResult = await response.json();
-        const rawContent = (aiResult.choices?.[0]?.message?.content || '').trim().replace(/"/g, ''); // Limpa aspas
+        const response = await axios.post(/* ... sua chamada axios ... */);
+        
+        const aiResult = response.data;
+        const rawContent = (aiResult.choices?.[0]?.message?.content || '').trim().replace(/"/g, '');
         console.log(`🤖 Resposta crua da IA: "${rawContent}"`);
 
-        // A IA está respondendo com texto simples, então vamos tratar como texto.
-        let intention = 'general'; // Padrão
+        let intention = 'general';
         if (rawContent.toLowerCase().includes('scheduling')) {
             intention = 'scheduling';
-        } else if (rawContent.toLowerCase().includes('cancellation')) {
-            intention = 'cancellation';
-        } // Adicione outros 'else if' se necessário
+        }
 
-        const analysis = {
+        // ✅ NOVA PARTE: Se a intenção for agendamento, extraia a data/hora
+        let dateTimeInfo = null;
+        if (intention === 'scheduling') {
+            dateTimeInfo = extractDateTime(messageContent);
+        }
+
+        return {
             intention: intention,
             confidence: 0.9,
-            provider: 'deepseek-text',
-            timestamp: new Date().toISOString()
+            provider: 'deepseek-text-axios',
+            timestamp: new Date().toISOString(),
+            dateTime: dateTimeInfo // ✅ RETORNANDO A DATA/HORA
         };
-        
-        return analysis;
 
     } catch (error) {
-        console.error('❌ Erro fatal na função analyze:', error);
-        return {
-            intention: 'general',
-            confidence: 0,
-            reasoning: 'Erro na execução da análise',
-            provider: 'error-fallback'
-        };
+        // ...
     }
 }
 
-// EXPORTAÇÃO CORRETA
+// ✅ EXPORTE A FUNÇÃO analyze
 module.exports = {
-    analyze // ✅ EXPORTANDO A FUNÇÃO 'analyze'
+    analyze
 };

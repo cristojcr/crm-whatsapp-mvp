@@ -223,7 +223,10 @@ class TelegramProcessor {
     async showAvailableProfessionals(userId, dateTimeInfo) {
         try {
             const availableProfessionals = await this.intelligentScheduling.getAvailableProfessionals(
-                userId, analysis.dateTime?.suggestedDate, analysis.dateTime?.suggestedTime, text
+                userId,
+                analysis.dateTime?.suggestedDate, // Passa a data sugerida
+                analysis.dateTime?.suggestedTime,  // Passa a hora sugerida
+                text
             );
 
             const response = this.intelligentScheduling.generateSchedulingResponse(
