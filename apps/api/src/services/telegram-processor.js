@@ -7,7 +7,7 @@ const { createClient } = require('@supabase/supabase-js');
 const ConversationStates = require('./conversation-states');
 const NaturalTiming = require('./natural-timing');
 const IntelligentScheduling = require('./intelligent-scheduling');
-const IntentionAnalyzer = require('./intention-analyzer');
+
 
 class TelegramProcessor {
     constructor() {
@@ -424,8 +424,21 @@ class TelegramProcessor {
         }
     }
 
+    async sendErrorMessage(chatId, userId) {
+        try {
+            console.error('🚨 Enviando mensagem de erro padrão para o usuário.');
+            const botConfig = await this.getUserBotConfig(userId);
+            if (botConfig?.bot_token) {
+                await this.conversationEngine.sendMessage(botConfig.bot_token, chatId, "Ops! 😅 Encontrei um probleminha técnico. Você pode tentar de novo, por favor?");
+            }
+        } catch (e) {
+            console.error('❌ Falha crítica ao tentar enviar a mensagem de erro:', e);
+        }
+    }
+
     // Processar mensagens (adaptado para multi-tenant com conversação natural)
     async processMessage(message, userId) {
+        const intentionAnalyzer = require('./intention-analyzer');
         try {
             console.log('🐛 DEBUG - userId recebido:', userId);
             console.log('🐛 DEBUG - message.from:', message.from);
