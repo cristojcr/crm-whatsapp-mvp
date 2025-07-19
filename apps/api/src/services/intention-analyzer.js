@@ -85,10 +85,10 @@ async function analyze(messageContent, context = {}) {
     try {
         const prompt = buildAnalysisPrompt(messageContent, context);
 
-        const response = await fetch(`${process.env.OPENAI_API_BASE}/chat/completions`, {
+        const response = await fetch(`${process.env.DEEPSEEK_BASE_URL}/chat/completions`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
