@@ -339,8 +339,8 @@ class TelegramProcessor {
             console.log('🔍 DEBUG - É scheduling?', analysis.intention === 'scheduling');
 
             // ✅ SE FOR AGENDAMENTO, BUSCAR DADOS REAIS
-            if (analysis.intention === 'scheduling') {
-                console.log('📅 Detectado agendamento - buscando dados reais...');
+            if (analysis.intention === 'scheduling'|| nextState === 'scheduling_intent') {
+                console.log('📅 Fluxo de Agendamento ATIVADO. Buscando dados reais...');
                 
                 // Buscar profissionais disponíveis reais
                 const availableProfessionals = await this.intelligentScheduling.getAvailableProfessionals(

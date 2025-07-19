@@ -98,6 +98,13 @@ class ConversationStates {
             mensagem: text.substring(0, 50)
         });
 
+        // ✅ ADICIONE ESTE BLOCO DE CÓDIGO AQUI
+        // REGRA PRIORITÁRIA: Se a intenção é agendar, mude o estado imediatamente.
+        if (intention === 'scheduling' && currentState !== this.STATES.SCHEDULING_INTENT) {
+            console.log('🚀 PRIORIDADE: Intenção de agendamento detectada. Mudando para o estado de agendamento.');
+            return this.STATES.SCHEDULING_INTENT;
+        }
+
         switch (currentState) {
             case this.STATES.INITIAL:
                 if (this.isGreeting(text)) {
