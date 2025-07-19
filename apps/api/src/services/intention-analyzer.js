@@ -42,58 +42,40 @@ const INTENTION_KEYWORDS = {
 
 function buildAnalysisPrompt(messageContent, context = {}) {
   const agora = new Date();
-  const hoje = new Date(agora.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
-  
+  const hoje = new Date(agora.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+
   const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
   const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-  
   const dataAtual = `${diasSemana[hoje.getDay()]}, ${hoje.getDate()} de ${meses[hoje.getMonth()]} de ${hoje.getFullYear()}`;
-  
-  console.log('📅 Data para IA:', dataAtual);
-  
-  let prompt = `CONTEXTO TEMPORAL: HOJE É ${dataAtual.toUpperCase()}
-TIMEZONE: BRASÍLIA (GMT-3) - TODOS OS HORÁRIOS SÃO NO FUSO HORÁRIO DO BRASIL!
 
-Analise a intenção desta mensagem:
+  // ETAPA 1: Foco absoluto em classificar a intenção
+  let prompt = `
+TAREFA PRIMÁRIA: Analise a MENSAGEM abaixo e classifique a intenção do usuário.
+
 MENSAGEM: "${messageContent}"
 
-IMPORTANTE PARA AGENDAMENTOS:
-- Se disser "amanhã": calcule ${hoje.getDate() + 1}/${hoje.getMonth() + 1}/${hoje.getFullYear()}
-- Se disser "próxima segunda/terça/quarta/quinta/sexta/sábado/domingo": calcule o PRÓXIMO dia da semana mencionado
-- TODOS OS HORÁRIOS SÃO EM BRASÍLIA (GMT-3)
+Responda APENAS com uma das seguintes categorias de intenção:
+- "scheduling": Se o usuário quer agendar, marcar, ver horários, ou perguntar sobre profissionais disponíveis. Exemplos: "quero marcar", "gostaria de agendar", "quais profissionais vocês têm?", "tem horário para limpeza?".
+- "rescheduling": Se o usuário quer REMARCAR ou alterar um agendamento existente.
+- "cancellation": Se o usuário quer CANCELAR um agendamento.
+- "inquiry": Se o usuário está perguntando sobre um agendamento que já existe.
+- "general": Para qualquer outra coisa, como saudações, perguntas gerais, etc.
 
-TIPOS DE INTENÇÃO:
-- scheduling: quer agendar algo novo (palavras-chave: "agendar", "marcar", "consulta", "agendamento", "gostaria de fazer", "quero marcar", "profissionais", "disponível", "horários", "atendimento", "pode me atender", "pode me ver")
-- rescheduling: quer remarcar algo já agendado  
-- cancellation: quer cancelar algo agendado
-- inquiry: pergunta sobre agendamentos existentes
-- general: conversa geral, saudações, outras
+REGRA DE OURO: Se a mensagem contém "agendar", "marcar", "profissionais", "horários", "disponível", "gostaria de fazer", a intenção é OBRIGATORIAMENTE "scheduling".
 
-IMPORTANTE: Se a mensagem contém "agendamento", "agendar", "marcar consulta", "gostaria de fazer", "profissionais", "disponível", "horários", "atendimento" = SEMPRE classificar como "scheduling"`
+Qual é a intenção?`;
 
+  // ETAPA 2: Adicionar contexto apenas se houver histórico (para a geração da resposta, não para a classificação)
   if (context.previousMessages && context.previousMessages.length > 0) {
-      prompt += `\n\nCONTEXTO ANTERIOR:\n`;
-      context.previousMessages.forEach((msg, index) => {
-        prompt += `${index + 1}. ${msg}\n`;
-      });
+    prompt += `\n\n---
+CONTEXTO ADICIONAL PARA GERAÇÃO DE RESPOSTA:
+- Data de hoje: ${dataAtual.toUpperCase()}
+- Histórico da conversa anterior:
+`;
+    context.previousMessages.forEach((msg, index) => {
+      prompt += `${index + 1}. ${msg.role}: ${msg.content}\n`;
+    });
   }
-
-  prompt += `
-
-RETORNE APENAS UM JSON (sem markdown, sem backticks):
-{
-  "intention": "tipo_de_intencao",
-  "confidence": 0.95,
-  "reasoning": "explicacao_breve",
-  "dateTime": {
-    "suggestedDate": "YYYY-MM-DD",
-    "suggestedTime": "HH:MM",
-    "hasDateReference": true,
-    "hasTimeReference": true
-  }
-}
-
-CALCULE AS DATAS CORRETAMENTE baseado em hoje ser ${dataAtual}!`;
 
   return prompt;
 }
