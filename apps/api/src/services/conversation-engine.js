@@ -46,100 +46,36 @@ class ConversationEngine {
                 // Prompts específicos por intenção
                 switch (intention) {
                     case 'scheduling':
-                        basePrompt += `\n\nO cliente quer agendar algo. ${situationData.dateTimeRequested ? `Ele mencionou: ${situationData.dateTimeRequested}` : 'Não especificou quando.'}
+                        // ✅ USAR DADOS REAIS SE DISPONÍVEIS
+                        if (situationData.realData && situationData.realData.hasRealData) {
+                            const professionals = situationData.realData.professionals;
+                            
+                            if (professionals.length === 0) {
+                                basePrompt += `\n\nO cliente quer agendar, mas NÃO TEMOS profissionais disponíveis para a data/horário solicitado.
+                                
+                    INSTRUÇÕES:
+                    1. Seja empática sobre a indisponibilidade
+                    2. Ofereça outras opções de datas/horários
+                    3. Pergunte se quer ver outras alternativas
+                    4. NUNCA invente profissionais ou horários que não existem`;
+                            } else {
+                                basePrompt += `\n\nO cliente quer agendar. PROFISSIONAIS REAIS DISPONÍVEIS:
+                    ${professionals.map(p => `- ${p.name}${p.specialty ? ` (${p.specialty})` : ''}`).join('\n')}
 
-        INSTRUÇÕES:
-        1. Cumprimente calorosamente (se primeira interação do dia)
-        2. Confirme que vai ajudar com o agendamento
-        3. Se ele não disse quando, pergunte naturalmente
-        4. Mantenha tom positivo e prestativo
-        5. QUEBRE em 2-3 mensagens menores em vez de 1 grande
+                    INSTRUÇÕES:
+                    1. Mostre APENAS estes profissionais reais
+                    2. NUNCA invente nomes ou horários
+                    3. Use os dados exatos fornecidos
+                    4. Seja natural e prestativa`;
+                            }
+                        } else {
+                            basePrompt += `\n\nO cliente quer agendar algo, mas ainda não temos informações específicas de data/hora.
 
-        EXEMPLO DO TOM:
-        "Oi ${customerName}! 😊 Tudo bem? Claro, vou te ajudar com o agendamento!"
-        [pausa]
-        "Deixa eu ver os horários disponíveis para você..."`;
-                        break;
-
-                    case 'professionals_list':
-                        basePrompt += `\n\nVocê precisa mostrar a lista de profissionais disponíveis.
-        PROFISSIONAIS: ${JSON.stringify(situationData.professionals)}
-
-        INSTRUÇÕES:
-        1. Avise que encontrou profissionais disponíveis
-        2. Apresente de forma calorosa, não como lista fria
-        3. Destaque especialidades relevantes
-        4. Pergunte a preferência dele
-        5. QUEBRE em mensagens menores
-
-        EXEMPLO:
-        "Que ótimo! Tenho alguns profissionais disponíveis para você! 👨‍⚕️"
-        [pausa]
-        "Temos a Dra. Ana (cardiologista), Dr. João (clínico geral)..."
-        [pausa]
-        "Qual você prefere? Ou quer que eu recomende? 🤔"`;
-                        break;
-
-                    case 'appointment_confirmed':
-                        basePrompt += `\n\nAgendamento foi confirmado com sucesso!
-        DETALHES: ${JSON.stringify(situationData.appointmentDetails)}
-
-        INSTRUÇÕES:
-        1. Comemore o sucesso do agendamento
-        2. Confirme os detalhes principais
-        3. Informe sobre lembretes automáticos
-        4. Ofereça ajuda adicional
-        5. Termine de forma calorosa
-
-        EXEMPLO:
-        "Perfeito! ✅ Seu agendamento está confirmado!"
-        [pausa]
-        "Dr. João, terça-feira 16/07 às 14h30 🗓"
-        [pausa]
-        "Você vai receber lembretes automáticos! Alguma dúvida? 😊"`;
-                        break;
-
-                    case 'general_inquiry':
-                        basePrompt += `\n\nCliente fez uma pergunta geral ou cumprimento.
-
-        INSTRUÇÕES:
-        1. Responda de forma calorosa
-        2. Seja prestativa
-        3. Direcione para como pode ajudar
-        4. Mantenha tom brasileiro autêntico`;
-                        break;
-
-                    case 'invalid_selection':
-                        basePrompt += `\n\nCliente fez uma seleção inválida ou não entendemos.
-
-        INSTRUÇÕES:
-        1. Seja compreensiva, não crítica
-        2. Explique gentilmente o problema
-        3. Ofereça ajuda para corrigir
-        4. Mantenha tom positivo`;
-                        break;
-
-                    case 'professional_selected':
-                        basePrompt += `\n\nCliente selecionou um profissional.
-        PROFISSIONAL: ${JSON.stringify(situationData.professional)}
-
-        INSTRUÇÕES:
-        1. Confirme a seleção com entusiasmo
-        2. Elogie a escolha
-        3. Avise que vai verificar disponibilidade
-        4. Mantenha expectativa positiva`;
-                        break;
-
-                    case 'out_of_hours':
-                        basePrompt += `\n\nO horário solicitado está fora do funcionamento.
-        HORÁRIO SOLICITADO: ${situationData.requestedTime}
-        HORÁRIO DE FUNCIONAMENTO: ${situationData.businessHours}
-
-        INSTRUÇÕES:
-        1. Seja empática sobre a inconveniência
-        2. Explique gentilmente o horário de funcionamento
-        3. Ofereça alternativas próximas
-        4. Mantenha tom prestativo`;
+                    INSTRUÇÕES:
+                    1. Pergunte quando quer agendar
+                    2. NÃO invente profissionais ou horários
+                    3. Colete as informações primeiro`;
+                        }
                         break;
                 }
 

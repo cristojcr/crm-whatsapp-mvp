@@ -329,10 +329,27 @@ class TelegramProcessor {
         }
 
             // FLUXO DE CONVERSA GERAL COM MEMÓRIA
-            // ✅ CORREÇÃO APLICADA AQUI
             const analysis = await intentionAnalyzer.analyzeWithHistoricalContext(
                 text, contact.id, userId, memoryContext
             );
+
+            // ✅ SE FOR AGENDAMENTO, BUSCAR DADOS REAIS
+            if (analysis.intention === 'scheduling') {
+                console.log('📅 Detectado agendamento - buscando dados reais...');
+                
+                // Buscar profissionais disponíveis reais
+                const availableProfessionals = await this.intelligentScheduling.getAvailableProfessionals(
+                    userId, analysis.dateTime?.suggestedDate, analysis.dateTime?.suggestedTime
+                );
+                
+                // Adicionar dados reais à análise
+                analysis.realData = {
+                    professionals: availableProfessionals,
+                    hasRealData: true
+                };
+                
+                console.log('👨‍⚕️ Profissionais reais encontrados:', availableProfessionals.length);
+            }
 
             // DETERMINAR PRÓXIMO ESTADO
             const nextState = this.conversationStates.determineNextState(
