@@ -245,7 +245,7 @@ class IntelligentScheduling {
                 .select('*')
                 .eq('user_id', userId)
                 .eq('is_active', true)
-                .eq('google_calendar_connected', true);
+                .eq('calendar_connected', true);
 
             if (error) {
                 console.error('❌ Erro buscando profissionais:', error);

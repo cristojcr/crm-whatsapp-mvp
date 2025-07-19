@@ -62,6 +62,7 @@ Responda APENAS com uma das seguintes categorias de intenção:
 - "general": Para qualquer outra coisa, como saudações, perguntas gerais, etc.
 
 REGRA DE OURO: Se a mensagem contém "agendar", "marcar", "profissionais", "horários", "disponível", "gostaria de fazer", a intenção é OBRIGATORIAMENTE "scheduling".
+REGRA DE SEGURANÇA: NUNCA invente nomes de profissionais ou horários. Se você não tem a informação realainda, por ser a primeira interação ou conversa geral, diga que precisa verificar no sistema.
 
 Qual é a intenção?`;
 
