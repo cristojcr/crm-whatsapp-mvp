@@ -112,16 +112,28 @@ class ConversationEngine {
     }
 
     // Enviar mensagem individual...
-    async sendMessage(chatId, text, botToken, options = {}) {
+    async sendMessage(botToken, chatId, text, options = {}) {
         try {
-            const response = await this.axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+            console.log(`💬 Enviando mensagem para: ${chatId}` );
+            
+            const response = await this.axios.post(url, {
                 chat_id: chatId,
                 text: text,
                 ...options
             });
+            
+            console.log('✅ Mensagem enviada com sucesso.');
             return response.data;
         } catch (error) {
-            console.error('❌ Erro enviando mensagem:', error);
+            // Log detalhado do erro do Axios
+            if (error.response) {
+                console.error('❌ Erro enviando mensagem (API Telegram):', error.response.status, error.response.data);
+            } else if (error.request) {
+                console.error('❌ Erro enviando mensagem (Sem resposta):', error.request);
+            } else {
+                console.error('❌ Erro enviando mensagem (Configuração):', error.message);
+            }
             throw error;
         }
     }
