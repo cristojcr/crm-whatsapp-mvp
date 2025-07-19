@@ -221,7 +221,7 @@ class TelegramProcessor {
     async showAvailableProfessionals(userId, dateTimeInfo) {
         try {
             const availableProfessionals = await this.intelligentScheduling.getAvailableProfessionals(
-                userId, dateTimeInfo.date, dateTimeInfo.time
+                userId, analysis.dateTime?.suggestedDate, analysis.dateTime?.suggestedTime, text
             );
 
             const response = this.intelligentScheduling.generateSchedulingResponse(
@@ -332,6 +332,11 @@ class TelegramProcessor {
             const analysis = await intentionAnalyzer.analyzeWithHistoricalContext(
                 text, contact.id, userId, memoryContext
             );
+
+            // ✅ DEBUG: Verificar o que a IA detectou
+            console.log('🔍 DEBUG - Análise da IA:', analysis);
+            console.log('🔍 DEBUG - Intenção detectada:', analysis.intention);
+            console.log('🔍 DEBUG - É scheduling?', analysis.intention === 'scheduling');
 
             // ✅ SE FOR AGENDAMENTO, BUSCAR DADOS REAIS
             if (analysis.intention === 'scheduling') {

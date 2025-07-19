@@ -50,6 +50,79 @@ class IntelligentScheduling {
             };
         }
 
+    async filterBySpecialty(professionals, clientDemand) {
+        try {
+            console.log('🔍 Analisando especialidades para:', clientDemand);
+
+            // Preparar dados dos profissionais para análise
+            const professionalsData = professionals.map(prof => ({
+                id: prof.id,
+                name: prof.name,
+                specialty: prof.specialty || 'Não especificado',
+                bio: prof.bio || 'Sem descrição'
+            }));
+
+            // Prompt para IA analisar compatibilidade
+            const analysisPrompt = `
+    DEMANDA DO CLIENTE: "${clientDemand}"
+
+    PROFISSIONAIS DISPONÍVEIS:
+    ${professionalsData.map(p => `
+    ID: ${p.id}
+    Nome: ${p.name}
+    Especialidade: ${p.specialty}
+    Bio: ${p.bio}
+    ---`).join('')}
+
+    TAREFA: Analise quais profissionais podem atender a demanda do cliente.
+
+    RETORNE APENAS UM JSON (sem markdown, sem backticks):
+    {
+    "suitable_professionals": [
+        {
+        "id": "id_do_profissional",
+        "name": "nome",
+        "reason": "motivo_da_compatibilidade"
+        }
+    ],
+    "explanation": "explicacao_breve"
+    }`;
+
+            // Chamar IA para análise
+            const response = await fetch(`${process.env.OPENAI_API_BASE}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'deepseek-chat',
+                    messages: [{ role: 'user', content: analysisPrompt }],
+                    temperature: 0.3
+                })
+            });
+
+            const aiResult = await response.json();
+            const analysis = JSON.parse(aiResult.choices[0].message.content);
+
+            console.log('🎯 Análise da IA:', analysis);
+
+            // Filtrar profissionais baseado na análise
+            const suitableIds = analysis.suitable_professionals.map(p => p.id);
+            const filteredProfessionals = professionals.filter(p => 
+                suitableIds.includes(p.id)
+            );
+
+            console.log(`✅ ${filteredProfessionals.length} profissionais adequados encontrados`);
+            return filteredProfessionals;
+
+        } catch (error) {
+            console.error('❌ Erro na análise de especialidade:', error);
+            // Em caso de erro, retornar todos os profissionais
+            return professionals;
+        }
+    }
+
     // ✅ EXTRAIR DATA
     extractDate(text) {
         // Padrões de data
