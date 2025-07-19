@@ -33,29 +33,29 @@ class ConversationStates {
     // ✅ OBTER ESTADO ATUAL DA CONVERSA
     async getCurrentState(conversationId) {
         try {
-            console.log('🔍 Buscando estado atual da conversa:', conversationId);
-
-            // Buscar na tabela conversations - se tiver campo state
-            const { data: conversation, error } = await this.supabase
+            console.log('🔍 Buscando estado para conversa:', conversationId);
+            
+            const { data, error } = await this.supabase
                 .from('conversations')
-                .select('id, metadata')
+                .select('status')
                 .eq('id', conversationId)
                 .single();
 
-            if (error || !conversation) {
-                console.log('📊 Estado não encontrado, usando inicial');
-                return this.STATES.INITIAL;
+            if (error) {
+                console.error('❌ Erro buscando estado:', error);
+                return 'initial';
             }
 
-            // Extrair estado do metadata
-            const state = conversation.metadata?.conversation_state || this.STATES.INITIAL;
-            console.log('📊 Estado atual encontrado:', state);
-            
-            return state;
+            if (!data || !data.status) {
+                console.log('📊 Estado vazio, usando inicial');
+                return 'initial';
+            }
 
+            console.log('✅ Estado encontrado:', data.status);
+            return data.status;
         } catch (error) {
-            console.error('❌ Erro buscando estado:', error);
-            return this.STATES.INITIAL;
+            console.error('❌ Erro geral buscando estado:', error);
+            return 'initial';
         }
     }
 

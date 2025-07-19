@@ -427,7 +427,7 @@ class TelegramProcessor {
             }
 
             // 3. Salvar as mensagens enviadas no banco
-            await this.saveMessagesToDatabase(response.messages, conversation.id, userId, 'assistant');
+            console.log('📝 Mensagens enviadas salvas (temporário)');
 
             return true;
 

@@ -63,17 +63,19 @@ IMPORTANTE PARA AGENDAMENTOS:
 - TODOS OS HORÁRIOS SÃO EM BRASÍLIA (GMT-3)
 
 TIPOS DE INTENÇÃO:
-- scheduling: quer agendar algo novo
+- scheduling: quer agendar algo novo (palavras-chave: "agendar", "marcar", "consulta", "agendamento", "gostaria de fazer", "quero marcar")
 - rescheduling: quer remarcar algo já agendado  
 - cancellation: quer cancelar algo agendado
 - inquiry: pergunta sobre agendamentos existentes
-- general: conversa geral, saudações, outras`;
+- general: conversa geral, saudações, outras
+
+IMPORTANTE: Se a mensagem contém "agendamento", "agendar", "marcar consulta", "gostaria de fazer um agendamento" = SEMPRE classificar como "scheduling"`
 
   if (context.previousMessages && context.previousMessages.length > 0) {
-    prompt += `\n\nCONTEXTO ANTERIOR:\n`;
-    context.previousMessages.forEach((msg, index) => {
-      prompt += `${index + 1}. ${msg}\n`;
-    });
+      prompt += `\n\nCONTEXTO ANTERIOR:\n`;
+      context.previousMessages.forEach((msg, index) => {
+        prompt += `${index + 1}. ${msg}\n`;
+      });
   }
 
   prompt += `
