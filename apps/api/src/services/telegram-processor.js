@@ -318,7 +318,7 @@ class TelegramProcessor {
         }
     }
 
-    async processWithContextAndState(text, contact, conversation, userId, memoryContext, currentState) {
+    async processWithContextAndState(text, contact, conversation, userId, memoryContext, currentState, intentionAnalyzer) {
         try {
             // =================================================================
             // PASSO 1: OBTER A ANÁLISE DE INTENÇÃO UMA ÚNICA VEZ
@@ -464,7 +464,7 @@ class TelegramProcessor {
 
             // 5. PROCESSAR APENAS COM IA COGNITIVA
             const response = await this.processWithContextAndState(
-                text, contact, conversation, userId, memoryContext, currentState, null
+                text, contact, conversation, userId, memoryContext, currentState, intentionAnalyzer
             );
 
             // 6. ENVIAR RESPOSTA COM TIMING NATURAL
