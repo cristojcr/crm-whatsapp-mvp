@@ -402,33 +402,29 @@ class TelegramProcessor {
             const botConfig = await this.getUserBotConfig(userId);
             if (!botConfig?.bot_token) {
                 console.error('❌ Bot token não encontrado, não é possível enviar resposta.');
-                return false;
+                return; // Usar return sem valor
             }
 
-            // 1. Obter o plano de envio do NaturalTiming
-            const messagePlan = await this.naturalTiming.planConversationalMessages(response.data.messages);
+            // ✅ LÓGICA INTELIGENTE: Verifica se a resposta veio da IA ou do nosso sistema.
+            const messages = response?.data?.messages || response?.messages;
 
-            // 2. Executar o plano de envio
+            if (!messages || messages.length === 0) {
+                console.log('⚠️ Nenhuma mensagem para enviar na resposta.');
+                return; // Interrompe se não houver mensagens
+            }
+
+            const messagePlan = await this.naturalTiming.planConversationalMessages(messages);
+
             for (const step of messagePlan) {
                 if (step.type === 'typing') {
                     await this.sendTypingAction(botConfig.bot_token, chatId);
                     await new Promise(resolve => setTimeout(resolve, step.duration));
                 } else if (step.type === 'message') {
-                    // Usar o método de envio do ConversationEngine ou um próprio
-                    await this.conversationEngine.sendMessage(chatId, step.content, botConfig.bot_token, { parse_mode: 'Markdown' });
-                } else if (step.type === 'pause') {
-                    await new Promise(resolve => setTimeout(resolve, step.duration));
+                    await this.conversationEngine.sendMessage(botConfig.bot_token, chatId, step.content, { parse_mode: 'Markdown' });
                 }
             }
-
-            // 3. Salvar as mensagens enviadas no banco
-            console.log('📝 Mensagens enviadas salvas (temporário)');
-
-            return true;
-
         } catch (error) {
             console.error('❌ Erro enviando resposta natural:', error);
-            return false;
         }
     }
 
