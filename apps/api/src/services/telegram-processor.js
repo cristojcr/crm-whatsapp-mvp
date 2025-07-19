@@ -316,72 +316,51 @@ class TelegramProcessor {
         }
     }
 
-    async processWithContextAndState(text, contact, conversation, userId, memoryContext, currentState, schedulingAnalysis) {
+    async processWithContextAndState(text, contact, conversation, userId, memoryContext, currentState) {
         try {
-            console.log('🧠 Processando com contexto completo');
-            const intentionAnalyzer = require('./intention-analyzer'); // Carrega o módulo aqui
+            // =================================================================
+            // PASSO 1: OBTER A ANÁLISE DE INTENÇÃO UMA ÚNICA VEZ
+            // =================================================================
+            // Esta chamada agora retorna a intenção correta: 'scheduling' ou 'general'.
+            const analysis = await this.intentionAnalyzer.analyze(text, { memoryContext });
+            console.log('✅ PASSO 1 - Análise de Intenção Concluída:', analysis);
 
-        // FLUXO APENAS PARA ESTADOS EXPLÍCITOS DE AGENDAMENTO
-        if (currentState.includes('scheduling') || currentState.includes('collecting')) {
-            return await this.handleIntelligentScheduling(
-                text, contact, conversation, userId, null, currentState
-            );
-        }
-
-            // FLUXO DE CONVERSA GERAL COM MEMÓRIA
-            const analysis = await intentionAnalyzer.analyzeWithHistoricalContext(
-                text, contact.id, userId, memoryContext
-            );
-
-            // ✅ DEBUG: Verificar o que a IA detectou
-            console.log('🔍 DEBUG - Análise da IA:', analysis);
-            console.log('🔍 DEBUG - Intenção detectada:', analysis.intention);
-            console.log('🔍 DEBUG - É scheduling?', analysis.intention === 'scheduling');
-
-                        // DETERMINAR PRÓXIMO ESTADO
+            // =================================================================
+            // PASSO 2: DETERMINAR E ATUALIZAR O ESTADO DA CONVERSA
+            // =================================================================
             const nextState = this.conversationStates.determineNextState(currentState, text, analysis);
+            await this.conversationStates.updateState(conversation.id, nextState);
+            console.log(`✅ PASSO 2 - Estado da Conversa Atualizado para: ${nextState}`);
 
-            // ✅ SE FOR AGENDAMENTO, BUSCAR DADOS REAIS
-            if (analysis.intention === 'scheduling'|| nextState === 'scheduling_intent') {
-                console.log('📅 Fluxo de Agendamento ATIVADO. Buscando dados reais...');
-                
-                // Buscar profissionais disponíveis reais
+            // =================================================================
+            // PASSO 3: AGIR COM BASE NA INTENÇÃO CORRETA
+            // =================================================================
+            // Se a intenção for de agendamento, o fluxo de DADOS REAIS é ativado.
+            if (analysis.intention === 'scheduling') {
+                console.log('📅 PASSO 3 - FLUXO DE AGENDAMENTO ATIVADO');
+
+                // 3a. Buscar profissionais REAIS no Supabase.
                 const availableProfessionals = await this.intelligentScheduling.getAvailableProfessionals(
-                    userId, analysis.dateTime?.suggestedDate, analysis.dateTime?.suggestedTime
+                    userId, null, null, text // Passando o texto para análise de especialidade
                 );
+                console.log(`👨‍⚕️ Profissionais Reais Encontrados: ${availableProfessionals.length}`);
+
+                // 3b. Gerar uma resposta USANDO os profissionais reais.
+                const response = await this.conversationEngine.generateSchedulingResponse(availableProfessionals, analysis);
+                return response;
+            } 
+            // Se for qualquer outra intenção, usamos a IA para uma resposta de conversa.
+            else {
+                console.log('💬 PASSO 3 - FLUXO DE CONVERSA GERAL ATIVADO');
                 
-                // Adicionar dados reais à análise
-                analysis.realData = {
-                    professionals: availableProfessionals,
-                    hasRealData: true
-                };
-                
-                console.log('👨‍⚕️ Profissionais reais encontrados:', availableProfessionals.length);
+                // 3a. Gerar uma resposta de conversa natural, sem inventar dados.
+                const response = await this.conversationEngine.generateNaturalResponse(text, memoryContext);
+                return response;
             }
 
-
-
-            // ATUALIZAR ESTADO
-            await this.conversationStates.updateState(
-                conversation.id, nextState, { lastMessage: text, analysis }
-            );
-
-            // PERSONALIZAR RESPOSTA BASEADA NO CONTEXTO
-            const contextualResponse = this.personalizeResponse(analysis, memoryContext);
-
-            return {
-                type: 'contextual',
-                messages: Array.isArray(contextualResponse) ? contextualResponse : [contextualResponse],
-                analysis: analysis,
-                newState: nextState
-            };
-
         } catch (error) {
-            console.error('❌ Erro no processamento contextual:', error);
-            return {
-                type: 'error',
-                messages: ['Ops, tive um probleminha. Pode tentar novamente? 😊']
-            };
+            console.error('❌ Erro fatal no processWithContextAndState:', error);
+            return this.conversationEngine.generateFallbackResponse(); // Retorna uma mensagem de erro padrão
         }
     }
 
