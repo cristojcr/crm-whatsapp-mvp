@@ -338,6 +338,9 @@ class TelegramProcessor {
             console.log('🔍 DEBUG - Intenção detectada:', analysis.intention);
             console.log('🔍 DEBUG - É scheduling?', analysis.intention === 'scheduling');
 
+                        // DETERMINAR PRÓXIMO ESTADO
+            const nextState = this.conversationStates.determineNextState(currentState, text, analysis);
+
             // ✅ SE FOR AGENDAMENTO, BUSCAR DADOS REAIS
             if (analysis.intention === 'scheduling'|| nextState === 'scheduling_intent') {
                 console.log('📅 Fluxo de Agendamento ATIVADO. Buscando dados reais...');
@@ -356,10 +359,7 @@ class TelegramProcessor {
                 console.log('👨‍⚕️ Profissionais reais encontrados:', availableProfessionals.length);
             }
 
-            // DETERMINAR PRÓXIMO ESTADO
-            const nextState = this.conversationStates.determineNextState(
-                currentState, text, analysis
-            );
+
 
             // ATUALIZAR ESTADO
             await this.conversationStates.updateState(
