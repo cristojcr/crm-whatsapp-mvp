@@ -402,7 +402,7 @@ class TelegramProcessor {
             }
 
             // 1. Obter o plano de envio do NaturalTiming
-            const messagePlan = await this.naturalTiming.planConversationalMessages(response.messages);
+            const messagePlan = await this.naturalTiming.planConversationalMessages(response.data.messages);
 
             // 2. Executar o plano de envio
             for (const step of messagePlan) {
