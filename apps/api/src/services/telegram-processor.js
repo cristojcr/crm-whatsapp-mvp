@@ -356,7 +356,11 @@ class TelegramProcessor {
                 console.log('💬 PASSO 3 - FLUXO DE CONVERSA GERAL ATIVADO');
                 
                 // 3a. Gerar uma resposta de conversa natural, sem inventar dados.
-                const response = await this.conversationEngine.generateNaturalResponse(text, memoryContext);
+                const response = await this.conversationEngine.generateNaturalResponse(
+                    analysis.intention, // Passando a intenção ('general')
+                    memoryContext,      // Passando o contexto da memória
+                    { name: contact.name } // Passando o objeto com o nome do cliente
+                );
                 return response;
             }
 

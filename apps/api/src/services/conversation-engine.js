@@ -24,7 +24,7 @@ class ConversationEngine {
     }
 
     buildConversationalPrompt(intention, context, customerData, situationData) {
-        const customerName = customerData.name || 'cliente';
+        const customerName = customerData?.name || 'cliente';
         const timeOfDay = this.getTimeOfDay();
         
         let basePrompt = `Você é Sarah, uma assistente virtual calorosa que trabalha numa clínica médica brasileira.
@@ -264,6 +264,18 @@ class ConversationEngine {
         const totalDelay = baseDelay + typingDelay;
         
         await new Promise(resolve => setTimeout(resolve, totalDelay));
+    }
+
+    generateFallbackResponse() {
+        console.log('⚠️ Gerando resposta de fallback...');
+        return {
+            success: false,
+            data: {
+                messages: ["Ops! 😅 Encontrei um probleminha técnico. Você pode tentar de novo, por favor?"],
+                tone: 'concerned',
+                shouldShowTyping: true
+            }
+        };
     }
 
 
