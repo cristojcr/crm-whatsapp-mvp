@@ -318,12 +318,12 @@ class TelegramProcessor {
         }
     }
 
-    async processWithContextAndState(text, contact, conversation, userId, memoryContext, currentState, intentionAnalyzer) {
+    async processWithContextAndState(text, contact, conversation, userId, memoryContext, currentState) {
         try {
             // =================================================================
             // PASSO 1: OBTER A ANÁLISE DE INTENÇÃO UMA ÚNICA VEZ
             // =================================================================
-            // Esta chamada agora retorna a intenção correta: 'scheduling' ou 'general'.
+            // Esta chamada usa o intention-analyzer simplificado que criamos.
             const analysis = await intentionAnalyzer.analyze(text, { memoryContext });
             console.log('✅ PASSO 1 - Análise de Intenção Concluída:', analysis);
 
@@ -343,7 +343,7 @@ class TelegramProcessor {
 
                 // 3a. Buscar profissionais REAIS no Supabase.
                 const availableProfessionals = await this.intelligentScheduling.getAvailableProfessionals(
-                    userId, null, null, text // Passando o texto para análise de especialidade
+                    userId, null, null, text
                 );
                 console.log(`👨‍⚕️ Profissionais Reais Encontrados: ${availableProfessionals.length}`);
 
@@ -362,7 +362,8 @@ class TelegramProcessor {
 
         } catch (error) {
             console.error('❌ Erro fatal no processWithContextAndState:', error);
-            return this.conversationEngine.generateFallbackResponse(); // Retorna uma mensagem de erro padrão
+            // Garante que o bot sempre dê uma resposta, mesmo em caso de erro.
+            return this.conversationEngine.generateFallbackResponse(); 
         }
     }
 
