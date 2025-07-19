@@ -7,7 +7,7 @@ const { createClient } = require('@supabase/supabase-js');
 const ConversationStates = require('./conversation-states');
 const NaturalTiming = require('./natural-timing');
 const IntelligentScheduling = require('./intelligent-scheduling');
-
+const intentionAnalyzer = require('./intention-analyzer');
 
 class TelegramProcessor {
     constructor() {
@@ -438,7 +438,7 @@ class TelegramProcessor {
 
     // Processar mensagens (adaptado para multi-tenant com conversação natural)
     async processMessage(message, userId) {
-        const intentionAnalyzer = require('./intention-analyzer');
+
         try {
             console.log('🐛 DEBUG - userId recebido:', userId);
             console.log('🐛 DEBUG - message.from:', message.from);
