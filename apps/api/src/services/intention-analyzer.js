@@ -55,7 +55,7 @@ TAREFA PRIMÁRIA: Analise a MENSAGEM abaixo e classifique a intenção do usuár
 MENSAGEM: "${messageContent}"
 
 Responda APENAS com uma das seguintes categorias de intenção:
-- "scheduling": Se o usuário quer agendar, marcar, ver horários, ou perguntar sobre profissionais disponíveis. Exemplos: "quero marcar", "gostaria de agendar", "quais profissionais vocês têm?", "tem horário para limpeza?".
+- "scheduling": Se o usuário quer agendar, marcar, ver horários, ou perguntar sobre profissionais disponíveis. Exemplos: "agendar", "fazer uma agendamento", "gostaria de uma consulta", "quero marcar", "marcar", "marcar uma consulta", "marcar uma hora", "marcar um horario", "gostaria de agendar", "quais profissionais vocês têm?", "tem horário para limpeza?".
 - "rescheduling": Se o usuário quer REMARCAR ou alterar um agendamento existente.
 - "cancellation": Se o usuário quer CANCELAR um agendamento.
 - "inquiry": Se o usuário está perguntando sobre um agendamento que já existe.
