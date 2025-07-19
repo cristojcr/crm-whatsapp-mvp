@@ -7,6 +7,7 @@ const { createClient } = require('@supabase/supabase-js');
 const ConversationStates = require('./conversation-states');
 const NaturalTiming = require('./natural-timing');
 const IntelligentScheduling = require('./intelligent-scheduling');
+const IntentionAnalyzer = require('./intention-analyzer');
 
 class TelegramProcessor {
     constructor() {
@@ -16,6 +17,7 @@ class TelegramProcessor {
         this.naturalTiming = new NaturalTiming();
         this.intelligentScheduling = new IntelligentScheduling();
         this.conversationEngine = new ConversationEngine(); 
+     
         
         // ✅ ÚNICA CRIAÇÃO DO CLIENTE SUPABASE
         this.supabase = createClient(
@@ -322,7 +324,7 @@ class TelegramProcessor {
             // PASSO 1: OBTER A ANÁLISE DE INTENÇÃO UMA ÚNICA VEZ
             // =================================================================
             // Esta chamada agora retorna a intenção correta: 'scheduling' ou 'general'.
-            const analysis = await this.intentionAnalyzer.analyze(text, { memoryContext });
+            const analysis = await intentionAnalyzer.analyze(text, { memoryContext });
             console.log('✅ PASSO 1 - Análise de Intenção Concluída:', analysis);
 
             // =================================================================
