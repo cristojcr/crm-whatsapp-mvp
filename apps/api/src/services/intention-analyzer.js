@@ -82,52 +82,63 @@ CONTEXTO ADICIONAL PARA GERAÇÃO DE RESPOSTA:
 }
 
 async function analyze(messageContent, context = {}) {
-  try {
-    if (!messageContent || typeof messageContent !== 'string') {
-      return { intention: 'general', confidence: 0, provider: 'fallback' };
+    try {
+        const prompt = buildAnalysisPrompt(messageContent, context);
+
+        const response = await fetch(`${process.env.OPENAI_API_BASE}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'deepseek-chat',
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.2,
+            })
+        });
+
+        if (!response.ok) {
+            console.error('❌ Erro na API DeepSeek:', response.statusText);
+            return { intention: 'general', provider: 'fallback' };
+        }
+
+        const aiResult = await response.json();
+        const rawContent = aiResult.choices[0].message.content.trim();
+        console.log(`🤖 Resposta crua da IA: "${rawContent}"`);
+
+        let analysis;
+        try {
+            // ✅ PRIMEIRO, tenta interpretar como um JSON completo.
+            analysis = JSON.parse(rawContent);
+        } catch (e) {
+            // ✅ SE FALHAR (NOSSO CASO ATUAL), interpreta como texto simples.
+            console.log(`⚠️ A resposta da IA não é um JSON. Tratando como texto simples.`);
+            
+            // Extrai a palavra-chave da resposta de texto.
+            if (rawContent.toLowerCase().includes('scheduling')) {
+                analysis = { intention: 'scheduling', confidence: 0.9, provider: 'deepseek-text' };
+            } else if (rawContent.toLowerCase().includes('general')) {
+                analysis = { intention: 'general', confidence: 0.9, provider: 'deepseek-text' };
+            } else if (rawContent.toLowerCase().includes('cancellation')) {
+                analysis = { intention: 'cancellation', confidence: 0.9, provider: 'deepseek-text' };
+            } else {
+                analysis = { intention: 'general', confidence: 0.5, provider: 'fallback-text' }; // Fallback
+            }
+        }
+
+        analysis.timestamp = new Date().toISOString();
+        return analysis;
+
+    } catch (error) {
+        console.error('❌ Erro fatal na função analyze:', error);
+        return {
+            intention: 'general',
+            confidence: 0,
+            reasoning: 'Erro na execução da análise',
+            provider: 'error-fallback'
+        };
     }
-
-    console.log('🧠 Analisando intenção com DeepSeek:', messageContent);
-    const prompt = buildAnalysisPrompt(messageContent, context);
-
-    const response = await fetch(DEEPSEEK_CONFIG.API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DEEPSEEK_CONFIG.API_KEY}`
-      },
-      body: JSON.stringify({
-        model: DEEPSEEK_CONFIG.MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: DEEPSEEK_CONFIG.TEMPERATURE,
-        max_tokens: DEEPSEEK_CONFIG.MAX_TOKENS
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`DeepSeek API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
-    console.log('🤖 Resposta da IA:', cleanContent);
-    const result = JSON.parse(cleanContent);
-    
-    return {
-      intention: result.intention || 'general',
-      confidence: result.confidence || 0.5,
-      reasoning: result.reasoning || 'Análise automática',
-      dateTime: result.dateTime || null,
-      provider: 'deepseek',
-      timestamp: new Date().toISOString()
-    };
-    
-  } catch (error) {
-    console.error('❌ Erro na análise DeepSeek:', error);
-    return analyzeFallback(messageContent);
-  }
 }
 
 function analyzeFallback(messageContent) {
