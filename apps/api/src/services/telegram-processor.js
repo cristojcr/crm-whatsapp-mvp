@@ -323,58 +323,44 @@ class TelegramProcessor {
 
     async processWithContextAndState(text, contact, conversation, userId, memoryContext, currentState) {
         try {
-            // =================================================================
-            // PASSO 1: OBTER A ANÁLISE DE INTENÇÃO UMA ÚNICA VEZ
-            // =================================================================
-            // Esta chamada usa o intention-analyzer simplificado que criamos.
             const analysis = await intentionAnalyzer.analyze(text, { memoryContext });
             console.log('✅ PASSO 1 - Análise de Intenção Concluída:', analysis);
 
-            // =================================================================
-            // PASSO 2: DETERMINAR E ATUALIZAR O ESTADO DA CONVERSA
-            // =================================================================
             const nextState = this.conversationStates.determineNextState(currentState, text, analysis);
             await this.conversationStates.updateState(conversation.id, nextState);
             console.log(`✅ PASSO 2 - Estado da Conversa Atualizado para: ${nextState}`);
 
-            // =================================================================
-            // PASSO 3: AGIR COM BASE NA INTENÇÃO CORRETA
-            // =================================================================
-            // Se a intenção for de agendamento, o fluxo de DADOS REAIS é ativado.
             if (analysis.intention === 'scheduling') {
                 console.log('📅 PASSO 3 - FLUXO DE AGENDAMENTO ATIVADO');
-
-                // 3a. Buscar profissionais REAIS no Supabase.
+                
+                // ✅ CORREÇÃO: Passando a data e hora da análise para a busca
                 const availableProfessionals = await this.intelligentScheduling.getAvailableProfessionals(
-                    userId, null, null, text
+                    userId,
+                    analysis.dateTime?.suggestedDate,
+                    analysis.dateTime?.suggestedTime,
+                    text // Passa o texto para filtrar por especialidade (ex: "limpeza")
                 );
                 console.log(`👨‍⚕️ Profissionais Reais Encontrados: ${availableProfessionals.length}`);
 
-                // 3b. Gerar uma resposta USANDO os profissionais reais.
-                // ✅ CORREÇÃO: A função correta está no intelligentScheduling, não no conversationEngine.
                 const response = this.intelligentScheduling.generateSchedulingResponse(
-                    availableProfessionals, 
-                    analysis.dateTime || {} // Passa o dateTime da análise ou um objeto vazio
+                    availableProfessionals,
+                    analysis.dateTime || {}
                 );
                 return response;
-            }
-            // Se for qualquer outra intenção, usamos a IA para uma resposta de conversa.
-            else {
+            } else {
                 console.log('💬 PASSO 3 - FLUXO DE CONVERSA GERAL ATIVADO');
                 
-                // 3a. Gerar uma resposta de conversa natural, sem inventar dados.
+                // ✅ CORREÇÃO: Passando o memoryContext para a IA usar o histórico
                 const response = await this.conversationEngine.generateNaturalResponse(
-                    analysis.intention, // Passando a intenção ('general')
-                    memoryContext,      // Passando o contexto da memória
-                    { name: contact.name } // Passando o objeto com o nome do cliente
+                    analysis.intention,
+                    memoryContext, // Passando o CONTEXTO COMPLETO
+                    { name: contact.name }
                 );
                 return response;
             }
-
         } catch (error) {
             console.error('❌ Erro fatal no processWithContextAndState:', error);
-            // Garante que o bot sempre dê uma resposta, mesmo em caso de erro.
-            return this.conversationEngine.generateFallbackResponse(); 
+            return this.conversationEngine.generateFallbackResponse();
         }
     }
 

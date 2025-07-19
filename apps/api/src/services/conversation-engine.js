@@ -84,6 +84,8 @@ class ConversationEngine {
         return basePrompt;
     }
 
+    
+
 
         // Chamar API do DeepSeek
     async callDeepSeek(prompt) {
