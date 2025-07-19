@@ -188,9 +188,14 @@ class ConversationEngine {
 
     // Obter período do dia
     getTimeOfDay() {
-        const hour = new Date().getHours();
-        if (hour < 12) return 'manhã';
-        if (hour < 18) return 'tarde';
+        // Cria uma data considerando o fuso horário de Brasília
+        const agora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+        const hour = agora.getHours();
+        
+        console.log(`🕐 DEBUG: Hora em Brasília para saudação: ${hour}`);
+
+        if (hour >= 5 && hour < 12) return 'manhã';
+        if (hour >= 12 && hour < 18) return 'tarde';
         return 'noite';
     }
 

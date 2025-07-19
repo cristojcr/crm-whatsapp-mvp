@@ -348,9 +348,13 @@ class TelegramProcessor {
                 console.log(`👨‍⚕️ Profissionais Reais Encontrados: ${availableProfessionals.length}`);
 
                 // 3b. Gerar uma resposta USANDO os profissionais reais.
-                const response = await this.conversationEngine.generateSchedulingResponse(availableProfessionals, analysis);
+                // ✅ CORREÇÃO: A função correta está no intelligentScheduling, não no conversationEngine.
+                const response = this.intelligentScheduling.generateSchedulingResponse(
+                    availableProfessionals, 
+                    analysis.dateTime || {} // Passa o dateTime da análise ou um objeto vazio
+                );
                 return response;
-            } 
+            }
             // Se for qualquer outra intenção, usamos a IA para uma resposta de conversa.
             else {
                 console.log('💬 PASSO 3 - FLUXO DE CONVERSA GERAL ATIVADO');
