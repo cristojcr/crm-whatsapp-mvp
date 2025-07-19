@@ -835,6 +835,22 @@ async function analyzeWithHistoricalContext(text, contactId, userId, customerCon
         const contextualPrompt = formatContextForAI(historicalContext, text);
         
         // Prompts mais inteligentes baseados no contexto
+        // Análise de intenção PRIMEIRO, contexto DEPOIS
+        const basicAnalysis = await analyze(text, {});
+        console.log('🔍 Análise básica da intenção:', basicAnalysis);
+
+        // Se for agendamento, buscar dados reais
+        if (basicAnalysis.intention === 'scheduling') {
+            console.log('✅ CONFIRMADO: É agendamento!');
+            return {
+                ...basicAnalysis,
+                hasHistoricalContext: true,
+                contactId,
+                userId
+            };
+        }
+
+        // Prompts mais inteligentes baseados no contexto
         let aiPrompt = `Você é Sarah, assistente virtual de uma clínica médica brasileira.
         
 PERSONALIDADE: Calorosa, empática, natural, brasileira, eficiente
